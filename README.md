@@ -32,4 +32,5 @@ http://chintama.club/mcp2/
 
 ## Note
 
-To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
+* To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
+* Hit `W`, `A`, `S`, `D` keys to move the ball. (You may first need to click the canvas to focus)
