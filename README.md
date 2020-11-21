@@ -29,3 +29,7 @@ make run
 ## Demo
 
 http://chintama.club/mcp2/
+
+## Note
+
+To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
