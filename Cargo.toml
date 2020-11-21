@@ -1,0 +1,10 @@
+[package]
+name = "mcp2"
+version = "0.1.0"
+authors = ["YushiOMOTE <yushiomote@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0"
+bevy = { git = "https://github.com/bevyengine/bevy.git", rev = "4fecb899aaa33cf2ebc42ac94a32d4b5336c6e93", features = ["bevy_winit", "x11", "render", "bevy_gltf", "png"], default-features = false }
+bevy_webgl2 = { git = "https://github.com/mrk-its/bevy_webgl2", branch = "dev" }

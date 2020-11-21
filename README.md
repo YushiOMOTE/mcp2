@@ -1,0 +1,31 @@
+# Mimimum Crappy Playable 2
+
+A minimum working example of bevy wasm.
+
+## Setup
+
+Install dependencies.
+
+```
+make setup
+```
+
+## Build
+
+Build wasm. The outputs are placed in `static/target`.
+
+```
+make build
+```
+
+## Run
+
+Run a http server that shows the game. Check it on your browser.
+
+```
+make run
+```
+
+## Demo
+
+http://chintama.club/mcp2/
