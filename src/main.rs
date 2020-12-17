@@ -5,7 +5,6 @@ use bevy::{
         mouse::{MouseButtonInput, MouseMotion, MouseWheel},
     },
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
 };
 
 fn main() {
@@ -74,7 +73,6 @@ struct Terrain {
 fn setup(
     commands: &mut Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let char_texture_handle = asset_server.load("textures/char.png");
@@ -120,7 +118,47 @@ fn setup(
         })
         .with(Gravity);
 
-    for x in 0..50 {
+    for y in 0..5 {
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite {
+                    color: Color::WHITE,
+                    index: 2,
+                },
+                texture_atlas: texture_atlas_handle.clone(),
+                transform: Transform::from_translation(Vec3::new(
+                    100.0,
+                    y as f32 * 44.0 - 100.0,
+                    0.0,
+                )),
+                ..Default::default()
+            })
+            .with(Terrain {
+                size: Vec2::new(44.0, 46.0),
+            });
+    }
+
+    for y in 0..5 {
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite {
+                    color: Color::WHITE,
+                    index: 2,
+                },
+                texture_atlas: texture_atlas_handle.clone(),
+                transform: Transform::from_translation(Vec3::new(
+                    -200.0,
+                    y as f32 * 44.0 - 300.0,
+                    0.0,
+                )),
+                ..Default::default()
+            })
+            .with(Terrain {
+                size: Vec2::new(44.0, 46.0),
+            });
+    }
+
+    for x in 0..5 {
         commands
             .spawn(SpriteSheetBundle {
                 sprite: TextureAtlasSprite {
@@ -130,6 +168,26 @@ fn setup(
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     x as f32 * 44.0 - 300.0,
+                    -100.0,
+                    0.0,
+                )),
+                ..Default::default()
+            })
+            .with(Terrain {
+                size: Vec2::new(44.0, 46.0),
+            });
+    }
+
+    for x in (0..50).filter(|&x| x < 15 || x > 20) {
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite {
+                    color: Color::WHITE,
+                    index: 1,
+                },
+                texture_atlas: texture_atlas_handle.clone(),
+                transform: Transform::from_translation(Vec3::new(
+                    x as f32 * 44.0 - 500.0,
                     -300.0,
                     0.0,
                 )),
@@ -211,8 +269,8 @@ fn animate_system(
     }
 }
 
-fn move_char_system(time: Res<Time>, mut query: Query<(&mut Player, &CharMotion, &mut Transform)>) {
-    for (mut player, state, mut transform) in query.iter_mut() {
+fn move_char_system(mut query: Query<(&mut Player, &CharMotion)>) {
+    for (mut player, state) in query.iter_mut() {
         if state.up && player.on_ground {
             player.velocity.y = 500.0;
             player.on_ground = false;
@@ -228,76 +286,19 @@ fn move_char_system(time: Res<Time>, mut query: Query<(&mut Player, &CharMotion,
     }
 }
 
-fn gravity_system(time: Res<Time>, mut query: Query<(&mut Player)>) {
+fn gravity_system(mut query: Query<&mut Player>) {
     for mut player in query.iter_mut() {
-        if !player.on_ground {
-            player.velocity.y -= 9.8;
-        }
+        player.velocity.y -= 9.8;
     }
 }
 
-fn adjust_player_y(
-    time: &Res<Time>,
-    player: &Player,
-    player_transform: &Transform,
-    terrain: &Terrain,
-    terrain_transform: &Transform,
-) -> (Transform, Vec3, bool) {
-    let vel = time.delta_seconds * player.velocity;
-
-    let mut new_player_transform = player_transform.clone();
-    let mut new_player_velocity = player.velocity.clone();
-    let mut on_ground = player.on_ground;
-
-    if player.velocity.y < 0.0 {
-        let ty = terrain_transform.translation.y + terrain.size.y;
-        let py = player_transform.translation.y + vel.y;
-        if py < ty {
-            new_player_transform.translation.y = ty;
-            new_player_velocity.y = 0.0;
-            on_ground = true;
-        }
-    } else if player.velocity.y > 0.0 {
-        let ty = terrain_transform.translation.y;
-        let py = player_transform.translation.y + player.size.y + vel.y;
-        if py > ty {
-            new_player_transform.translation.y = ty;
-            new_player_velocity.y = 0.0;
-        }
+fn to_rect(translation: &Vec3, size: &Vec2) -> Rect<f32> {
+    Rect {
+        left: translation.x,
+        right: translation.x + size.x,
+        bottom: translation.y,
+        top: translation.y + size.y,
     }
-
-    (new_player_transform, new_player_velocity, on_ground)
-}
-
-fn adjust_player_x(
-    time: &Res<Time>,
-    player: &Player,
-    player_transform: &Transform,
-    terrain: &Terrain,
-    terrain_transform: &Transform,
-) -> (Transform, Vec3) {
-    let vel = time.delta_seconds * player.velocity;
-
-    let mut new_player_transform = player_transform.clone();
-    let mut new_player_velocity = player.velocity.clone();
-
-    if player.velocity.x < 0.0 {
-        let tx = terrain_transform.translation.x + terrain.size.x;
-        let px = player_transform.translation.x + vel.x;
-        if px < tx {
-            new_player_transform.translation.x = tx;
-            new_player_velocity.x = 0.0;
-        }
-    } else if player.velocity.x > 0.0 {
-        let tx = terrain_transform.translation.x;
-        let px = player_transform.translation.x + player.size.x + vel.x;
-        if px > tx {
-            new_player_transform.translation.x = tx - player.size.x;
-            new_player_velocity.x = 0.0;
-        }
-    }
-
-    (new_player_transform, new_player_velocity)
 }
 
 fn physics_system(
@@ -305,78 +306,79 @@ fn physics_system(
     mut query: Query<(&mut Player, &mut Transform)>,
     mut terrains: Query<(&Terrain, &Transform)>,
 ) {
-    use bevy::render::renderer::RenderResource;
+    for (mut p, mut pt) in query.iter_mut() {
+        let player = to_rect(&pt.translation, &p.size);
 
-    for (mut player, mut player_transform) in query.iter_mut() {
-        let player_translation = player_transform.translation.clone();
+        let new_player_pos = pt.translation + time.delta_seconds * p.velocity;
+        let new_player = to_rect(&new_player_pos, &p.size);
 
-        for (terrain, terrain_transform) in terrains.iter_mut() {
-            let collision = collide(
-                player_transform.translation + time.delta_seconds * player.velocity,
-                player.size,
-                terrain_transform.translation,
-                terrain.size,
-            );
-            if collision.is_none() {
+        let mut possible_y = new_player_pos.y;
+        let mut possible_x = new_player_pos.x;
+        let mut new_velocity = p.velocity.clone();
+
+        for (t, tt) in terrains.iter_mut() {
+            let terrain = to_rect(&tt.translation, &t.size);
+
+            if new_player.right <= terrain.left
+                || terrain.right <= new_player.left
+                || new_player.top <= terrain.bottom
+                || terrain.top <= new_player.bottom
+            {
+                // no collision
                 continue;
             }
 
-            let (axt, axv) = adjust_player_x(
-                &time,
-                &player,
-                &player_transform,
-                &terrain,
-                &terrain_transform,
-            );
-            let (ayt, ayv, on_ground) = adjust_player_y(
-                &time,
-                &player,
-                &player_transform,
-                &terrain,
-                &terrain_transform,
-            );
+            // can collide; constraint player position
 
-            let xcol = collide(
-                axt.translation + axv,
-                player.size,
-                terrain_transform.translation,
-                terrain.size,
-            );
-            let ycol = collide(
-                ayt.translation + ayv,
-                player.size,
-                terrain_transform.translation,
-                terrain.size,
-            );
+            // time until top/bottom collision
+            let ty = if p.velocity.y < 0.0 && terrain.top <= player.bottom {
+                (terrain.top - player.bottom) / p.velocity.y
+            } else if p.velocity.y > 0.0 && player.top <= terrain.bottom {
+                (terrain.bottom - player.top) / p.velocity.y
+            } else {
+                f32::INFINITY
+            };
 
-            match (xcol.is_none(), ycol.is_none()) {
-                (_, true) => {
-                    *player_transform = ayt;
-                    player.velocity = ayv;
-                    player.on_ground = on_ground;
+            // time until left/right collision
+            let tx = if p.velocity.x < 0.0 && terrain.right <= player.left {
+                (terrain.right - player.left) / p.velocity.x
+            } else if p.velocity.x > 0.0 && player.right <= terrain.left {
+                (terrain.left - player.right) / p.velocity.x
+            } else {
+                f32::INFINITY
+            };
+
+            p.on_ground = ty == 0.0;
+
+            if ty < tx {
+                // top/bottom collides before left/right collides
+
+                if p.velocity.y < 0.0 {
+                    // player bottom collides
+                    possible_y = possible_y.max(terrain.top);
+                } else {
+                    // player top collides
+                    possible_y = possible_y.min(terrain.bottom - p.size.y);
                 }
-                (true, _) => {
-                    *player_transform = axt;
-                    player.velocity = axv;
+
+                new_velocity.y = 0.0;
+            } else {
+                // left/right collides before top/bottom collides
+
+                if p.velocity.x < 0.0 {
+                    // player left collides
+                    possible_x = possible_x.max(terrain.right);
+                } else {
+                    // player right collides
+                    possible_x = possible_x.min(terrain.left - p.size.x);
                 }
-                _ => {
-                    *player_transform = ayt;
-                    player.velocity = ayv;
-                    player.on_ground = on_ground;
-                    let (axt, axv) = adjust_player_x(
-                        &time,
-                        &player,
-                        &player_transform,
-                        &terrain,
-                        &terrain_transform,
-                    );
-                    *player_transform = axt;
-                    player.velocity = axv;
-                }
+
+                new_velocity.x = 0.0;
             }
         }
 
-        player_transform.translation.x += time.delta_seconds * player.velocity.x;
-        player_transform.translation.y += time.delta_seconds * player.velocity.y;
+        pt.translation.x = possible_x;
+        pt.translation.y = possible_y;
+        p.velocity = new_velocity;
     }
 }
