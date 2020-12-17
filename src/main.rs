@@ -78,21 +78,34 @@ fn setup(
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let char_texture_handle = asset_server.load("textures/char.png");
-    let char_texture_atlas =
-        TextureAtlas::from_grid(char_texture_handle, Vec2::new(32.0, 32.0), 12, 1);
-    let char_texture_atlas_handle = texture_atlases.add(char_texture_atlas);
-
-    let texture_handle = asset_server.load("textures/terrain.png");
-    let mut texture_atlas = TextureAtlas::new_empty(texture_handle, Vec2::new(352.0, 176.0));
-    for &y in &[0.0f32, 64.0, 128.0] {
-        for &x in &[0.0f32, 96.0] {
-            texture_atlas.add_texture(bevy::sprite::Rect {
-                min: Vec2::new(x + 2.0, y + 1.0),
-                max: Vec2::new(x + 48.0 - 2.0, y + 48.0 - 1.0),
+    let mut char_texture_atlas =
+        TextureAtlas::new_empty(char_texture_handle, Vec2::new(128.0 * 2.0, 240.0 * 2.0));
+    for y in 0..15 {
+        for x in 0..8 {
+            let x = x as f32 * 32.0;
+            let y = y as f32 * 32.0;
+            char_texture_atlas.add_texture(bevy::sprite::Rect {
+                min: Vec2::new(x, y),
+                max: Vec2::new(x + 32.0, y + 32.0),
             });
         }
     }
 
+    let texture_handle = asset_server.load("textures/tiles.png");
+    let mut texture_atlas =
+        TextureAtlas::new_empty(texture_handle, Vec2::new(192.0 * 2.0, 96.0 * 2.0));
+    for y in 0..6 {
+        for x in 0..12 {
+            let x = x as f32 * 32.0;
+            let y = y as f32 * 32.0;
+            texture_atlas.add_texture(bevy::sprite::Rect {
+                min: Vec2::new(x, y),
+                max: Vec2::new(x + 32.0, y + 32.0),
+            });
+        }
+    }
+
+    let char_texture_atlas_handle = texture_atlases.add(char_texture_atlas);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
     commands
@@ -112,7 +125,7 @@ fn setup(
             },
         })
         .with(CharMotion::default())
-        .with(Timer::from_seconds(0.1, true))
+        .with(Timer::from_seconds(0.2, true))
         .with(Player {
             on_ground: false,
             size: Vec2::new(32.0, 32.0),
@@ -130,13 +143,13 @@ fn setup(
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     100.0,
-                    y as f32 * 44.0 - 100.0,
+                    y as f32 * 32.0 - 100.0,
                     0.0,
                 )),
                 ..Default::default()
             })
             .with(Terrain {
-                size: Vec2::new(44.0, 46.0),
+                size: Vec2::new(32.0, 32.0),
             });
     }
 
@@ -150,13 +163,13 @@ fn setup(
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     -200.0,
-                    y as f32 * 44.0 - 300.0,
+                    y as f32 * 32.0 - 300.0,
                     0.0,
                 )),
                 ..Default::default()
             })
             .with(Terrain {
-                size: Vec2::new(44.0, 46.0),
+                size: Vec2::new(32.0, 32.0),
             });
     }
 
@@ -169,18 +182,18 @@ fn setup(
                 },
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
-                    x as f32 * 44.0 - 300.0,
+                    x as f32 * 32.0 - 300.0,
                     -100.0,
                     0.0,
                 )),
                 ..Default::default()
             })
             .with(Terrain {
-                size: Vec2::new(44.0, 46.0),
+                size: Vec2::new(32.0, 32.0),
             });
     }
 
-    for x in (0..50).filter(|&x| x < 15 || x > 20) {
+    for x in (0..100).filter(|&x| x < 50 || x > 60) {
         commands
             .spawn(SpriteSheetBundle {
                 sprite: TextureAtlasSprite {
@@ -189,14 +202,14 @@ fn setup(
                 },
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
-                    x as f32 * 44.0 - 500.0,
+                    x as f32 * 32.0 - 500.0,
                     -300.0,
                     0.0,
                 )),
                 ..Default::default()
             })
             .with(Terrain {
-                size: Vec2::new(44.0, 46.0),
+                size: Vec2::new(32.0, 32.0),
             });
     }
 }
@@ -260,13 +273,21 @@ fn track_inputs_system(
 fn animate_system(
     time: Res<Time>,
     texture_atlases: Res<Assets<TextureAtlas>>,
-    mut query: Query<(&mut Timer, &mut TextureAtlasSprite, &Handle<TextureAtlas>)>,
+    mut query: Query<(
+        &Player,
+        &mut Timer,
+        &mut TextureAtlasSprite,
+        &Handle<TextureAtlas>,
+    )>,
 ) {
-    for (mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
+    for (player, mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
         timer.tick(time.delta_seconds);
         if timer.finished {
-            let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-            sprite.index = ((sprite.index as usize + 1) % texture_atlas.textures.len()) as u32;
+            if player.velocity.x != 0.0 {
+                sprite.index = ((sprite.index as usize + 1) % 6 + 8) as u32;
+            } else {
+                sprite.index = 40;
+            }
         }
     }
 }
