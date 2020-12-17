@@ -5,6 +5,7 @@ use bevy::{
         mouse::{MouseButtonInput, MouseMotion, MouseWheel},
     },
     prelude::*,
+    render::camera::Camera,
 };
 
 fn main() {
@@ -27,6 +28,7 @@ fn main() {
         .add_system_to_stage("before", animate_system)
         .add_system_to_stage("before", gravity_system)
         .add_system_to_stage("after", physics_system)
+        .add_system(camera_system)
         .run();
 }
 
@@ -298,6 +300,17 @@ fn to_rect(translation: &Vec3, size: &Vec2) -> Rect<f32> {
         right: translation.x + size.x,
         bottom: translation.y,
         top: translation.y + size.y,
+    }
+}
+
+fn camera_system(
+    query: Query<(&Player, &Transform)>,
+    mut camera: Query<(&mut Camera, &mut Transform)>,
+) {
+    for (_, player_transform) in query.iter() {
+        for (_, mut camera_transform) in camera.iter_mut() {
+            camera_transform.translation = player_transform.translation.clone();
+        }
     }
 }
 
