@@ -30,7 +30,11 @@ make run
 
 http://chintama.club/mcp2/
 
+Now it's 2d platformer.
+
 ## Note
 
 * To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
-* Hit `W`, `A`, `S`, `D` keys to move the ball. (You may first need to click the canvas to focus)
+* `W`, `A`, `S`, `D` keys to move the character. (You may first need to click the canvas to focus)
+* `E` to switch to `edit mode`.
+* `P` to switch to `play mode`.
