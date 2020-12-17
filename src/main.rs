@@ -21,6 +21,7 @@ fn main() {
         .add_plugins(bevy_webgl2::DefaultPlugins)
         .add_startup_system(setup)
         .init_resource::<TrackInputState>()
+        .init_resource::<GameMode>()
         .add_system(track_inputs_system)
         .add_stage_after(stage::UPDATE, "before")
         .add_stage_after(stage::UPDATE, "after")
@@ -28,6 +29,7 @@ fn main() {
         .add_system_to_stage("before", animate_system)
         .add_system_to_stage("before", gravity_system)
         .add_system_to_stage("after", physics_system)
+        .add_system(palette_system)
         .add_system(camera_system)
         .run();
 }
@@ -39,6 +41,11 @@ struct TrackInputState {
     motion: EventReader<MouseMotion>,
     mousebtn: EventReader<MouseButtonInput>,
     scroll: EventReader<MouseWheel>,
+}
+
+#[derive(Default)]
+struct GameMode {
+    edit_mode: bool,
 }
 
 struct Char {
@@ -70,6 +77,10 @@ struct Player {
 
 struct Terrain {
     size: Vec2,
+}
+
+struct TilePalette {
+    id: usize,
 }
 
 fn setup(
@@ -133,19 +144,27 @@ fn setup(
         })
         .with(Gravity);
 
-    for y in 0..5 {
+    for i in 0..15 * 8 {
         commands
             .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite {
-                    color: Color::WHITE,
-                    index: 2,
-                },
+                sprite: TextureAtlasSprite::new(i),
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     100.0,
-                    y as f32 * 32.0 - 100.0,
+                    i as f32 * 32.0 - 100.0,
                     0.0,
                 )),
+                ..Default::default()
+            })
+            .with(TilePalette { id: i as usize });
+    }
+
+    for y in 0..5 {
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite::new(2),
+                texture_atlas: texture_atlas_handle.clone(),
+                transform: Transform::from_translation(Vec3::zero()),
                 ..Default::default()
             })
             .with(Terrain {
@@ -156,10 +175,7 @@ fn setup(
     for y in 0..5 {
         commands
             .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite {
-                    color: Color::WHITE,
-                    index: 2,
-                },
+                sprite: TextureAtlasSprite::new(2),
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     -200.0,
@@ -176,10 +192,7 @@ fn setup(
     for x in 0..5 {
         commands
             .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite {
-                    color: Color::WHITE,
-                    index: 1,
-                },
+                sprite: TextureAtlasSprite::new(1),
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     x as f32 * 32.0 - 300.0,
@@ -196,10 +209,7 @@ fn setup(
     for x in (0..100).filter(|&x| x < 50 || x > 60) {
         commands
             .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite {
-                    color: Color::WHITE,
-                    index: 1,
-                },
+                sprite: TextureAtlasSprite::new(1),
                 texture_atlas: texture_atlas_handle.clone(),
                 transform: Transform::from_translation(Vec3::new(
                     x as f32 * 32.0 - 500.0,
@@ -216,6 +226,7 @@ fn setup(
 
 fn track_inputs_system(
     mut state: ResMut<TrackInputState>,
+    mut game_mode: ResMut<GameMode>,
     keys: Res<Events<KeyboardInput>>,
     cursor: Res<Events<CursorMoved>>,
     motion: Res<Events<MouseMotion>>,
@@ -237,6 +248,16 @@ fn track_inputs_system(
                 }
                 Some(k) if k == char.keybinds.right => {
                     state.right = e.state.is_pressed();
+                }
+                Some(k) if k == KeyCode::E => {
+                    if !game_mode.edit_mode && e.state.is_pressed() {
+                        game_mode.edit_mode = true;
+                    }
+                }
+                Some(k) if k == KeyCode::P => {
+                    if game_mode.edit_mode && e.state.is_pressed() {
+                        game_mode.edit_mode = false;
+                    }
                 }
                 _ => {}
             }
@@ -272,6 +293,7 @@ fn track_inputs_system(
 
 fn animate_system(
     time: Res<Time>,
+    game_mode: Res<GameMode>,
     texture_atlases: Res<Assets<TextureAtlas>>,
     mut query: Query<(
         &Player,
@@ -283,7 +305,9 @@ fn animate_system(
     for (player, mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
         timer.tick(time.delta_seconds);
         if timer.finished {
-            if player.velocity.x != 0.0 {
+            if game_mode.edit_mode {
+                sprite.index = 1;
+            } else if player.velocity.x != 0.0 {
                 sprite.index = ((sprite.index as usize + 1) % 6 + 8) as u32;
             } else {
                 sprite.index = 40;
@@ -292,9 +316,17 @@ fn animate_system(
     }
 }
 
-fn move_char_system(mut query: Query<(&mut Player, &CharMotion)>) {
+fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Player, &CharMotion)>) {
     for (mut player, state) in query.iter_mut() {
-        if state.up && player.on_ground {
+        if game_mode.edit_mode {
+            if state.up {
+                player.velocity.y = 300.0;
+            } else if state.down {
+                player.velocity.y = -300.0;
+            } else {
+                player.velocity.y = 0.0;
+            }
+        } else if state.up && player.on_ground {
             player.velocity.y = 500.0;
             player.on_ground = false;
         }
@@ -309,7 +341,10 @@ fn move_char_system(mut query: Query<(&mut Player, &CharMotion)>) {
     }
 }
 
-fn gravity_system(mut query: Query<&mut Player>) {
+fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Player>) {
+    if game_mode.edit_mode {
+        return;
+    }
     for mut player in query.iter_mut() {
         player.velocity.y -= 9.8;
     }
@@ -331,6 +366,23 @@ fn camera_system(
     for (_, player_transform) in query.iter() {
         for (_, mut camera_transform) in camera.iter_mut() {
             camera_transform.translation = player_transform.translation.clone();
+        }
+    }
+}
+
+fn palette_system(
+    game_mode: Res<GameMode>,
+    mut palettes: Query<(&TilePalette, &mut Transform, &mut Draw)>,
+    camera: Query<(&Camera, &Transform)>,
+) {
+    for (palette, mut palette_transform, mut draw) in palettes.iter_mut() {
+        draw.is_visible = game_mode.edit_mode;
+
+        for (_, mut camera_transform) in camera.iter() {
+            let x = (palette.id % 12) as f32 * 32.0;
+            let y = (palette.id / 12) as f32 * 32.0;
+            palette_transform.translation.x = camera_transform.translation.x - 480.0 + x;
+            palette_transform.translation.y = camera_transform.translation.y + 480.0 - y;
         }
     }
 }
