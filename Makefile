@@ -12,7 +12,7 @@ setup:
 	cargo install basic-http-server
 
 
-build:
+build: tiles
 	cargo build --target wasm32-unknown-unknown --release
 	wasm-bindgen --out-dir $(wasm_dir) --target web target/wasm32-unknown-unknown/release/$(crate_name).wasm
 
