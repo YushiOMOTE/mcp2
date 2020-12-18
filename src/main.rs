@@ -30,7 +30,6 @@ fn main() {
         .add_system_to_stage("before", animate_system)
         .add_system_to_stage("before", gravity_system)
         .add_system_to_stage("after", physics_system)
-        .add_system(palette_system)
         .add_system(camera_system)
         .run();
 }
@@ -46,7 +45,7 @@ struct TrackInputState {
 
 #[derive(Default)]
 struct GameMode {
-    edit_mode: bool,
+    debug_mode: bool,
 }
 
 struct Char {
@@ -78,10 +77,6 @@ struct Player {
 
 struct Terrain {
     size: Vec2,
-}
-
-struct TilePalette {
-    id: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -210,13 +205,13 @@ fn track_inputs_system(
                     state.right = e.state.is_pressed();
                 }
                 Some(k) if k == KeyCode::E => {
-                    if !game_mode.edit_mode && e.state.is_pressed() {
-                        game_mode.edit_mode = true;
+                    if !game_mode.debug_mode && e.state.is_pressed() {
+                        game_mode.debug_mode = true;
                     }
                 }
                 Some(k) if k == KeyCode::P => {
-                    if game_mode.edit_mode && e.state.is_pressed() {
-                        game_mode.edit_mode = false;
+                    if game_mode.debug_mode && e.state.is_pressed() {
+                        game_mode.debug_mode = false;
                     }
                 }
                 _ => {}
@@ -254,18 +249,12 @@ fn track_inputs_system(
 fn animate_system(
     time: Res<Time>,
     game_mode: Res<GameMode>,
-    texture_atlases: Res<Assets<TextureAtlas>>,
-    mut query: Query<(
-        &Player,
-        &mut Timer,
-        &mut TextureAtlasSprite,
-        &Handle<TextureAtlas>,
-    )>,
+    mut query: Query<(&Player, &mut Timer, &mut TextureAtlasSprite)>,
 ) {
-    for (player, mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
+    for (player, mut timer, mut sprite) in query.iter_mut() {
         timer.tick(time.delta_seconds);
         if timer.finished {
-            if game_mode.edit_mode {
+            if game_mode.debug_mode {
                 sprite.index = 1;
             } else if player.velocity.x != 0.0 {
                 sprite.index = ((sprite.index as usize + 1) % 6 + 8) as u32;
@@ -278,7 +267,7 @@ fn animate_system(
 
 fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Player, &CharMotion)>) {
     for (mut player, state) in query.iter_mut() {
-        if game_mode.edit_mode {
+        if game_mode.debug_mode {
             if state.up {
                 player.velocity.y = 300.0;
             } else if state.down {
@@ -302,7 +291,7 @@ fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Player, &Ch
 }
 
 fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Player>) {
-    if game_mode.edit_mode {
+    if game_mode.debug_mode {
         return;
     }
     for mut player in query.iter_mut() {
@@ -326,23 +315,6 @@ fn camera_system(
     for (_, player_transform) in query.iter() {
         for (_, mut camera_transform) in camera.iter_mut() {
             camera_transform.translation = player_transform.translation.clone();
-        }
-    }
-}
-
-fn palette_system(
-    game_mode: Res<GameMode>,
-    mut palettes: Query<(&TilePalette, &mut Transform, &mut Draw)>,
-    camera: Query<(&Camera, &Transform)>,
-) {
-    for (palette, mut palette_transform, mut draw) in palettes.iter_mut() {
-        draw.is_visible = game_mode.edit_mode;
-
-        for (_, mut camera_transform) in camera.iter() {
-            let x = (palette.id % 12) as f32 * 32.0;
-            let y = (palette.id / 12) as f32 * 32.0;
-            palette_transform.translation.x = camera_transform.translation.x - 480.0 + x;
-            palette_transform.translation.y = camera_transform.translation.y + 480.0 - y;
         }
     }
 }
