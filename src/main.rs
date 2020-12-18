@@ -7,6 +7,7 @@ use bevy::{
     prelude::*,
     render::camera::Camera,
 };
+use serde::{Deserialize, Serialize};
 
 fn main() {
     App::build()
@@ -83,6 +84,15 @@ struct TilePalette {
     id: usize,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct Tile {
+    map: Vec<Vec<u32>>,
+}
+
+fn load_tiles() -> Tile {
+    serde_json::from_slice(include_bytes!("tiles.json")).unwrap()
+}
+
 fn setup(
     commands: &mut Commands,
     asset_server: Res<AssetServer>,
@@ -144,78 +154,28 @@ fn setup(
         })
         .with(Gravity);
 
-    for i in 0..15 * 8 {
-        commands
-            .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(i),
-                texture_atlas: texture_atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(
-                    100.0,
-                    i as f32 * 32.0 - 100.0,
-                    0.0,
-                )),
-                ..Default::default()
-            })
-            .with(TilePalette { id: i as usize });
-    }
+    let tile = load_tiles();
 
-    for y in 0..5 {
-        commands
-            .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(2),
-                texture_atlas: texture_atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::zero()),
-                ..Default::default()
-            })
-            .with(Terrain {
-                size: Vec2::new(32.0, 32.0),
-            });
-    }
+    let xbase = -100.0;
+    let ybase = 100.0;
 
-    for y in 0..5 {
-        commands
-            .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(2),
-                texture_atlas: texture_atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(
-                    -200.0,
-                    y as f32 * 32.0 - 300.0,
-                    0.0,
-                )),
-                ..Default::default()
-            })
-            .with(Terrain {
-                size: Vec2::new(32.0, 32.0),
-            });
-    }
+    for (x, y, &i) in tile
+        .map
+        .iter()
+        .enumerate()
+        .map(|(y, v)| v.iter().enumerate().map(move |(x, i)| (x, y, i)))
+        .flatten()
+        .filter(|(_, _, &i)| i != 0)
+    {
+        let x = x as f32 * 32.0 + xbase;
+        let y = y as f32 * -32.0 + ybase;
+        info!("x={}, y={}, i={}", x, y, i);
 
-    for x in 0..5 {
         commands
             .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(1),
+                sprite: TextureAtlasSprite::new(i - 1),
                 texture_atlas: texture_atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(
-                    x as f32 * 32.0 - 300.0,
-                    -100.0,
-                    0.0,
-                )),
-                ..Default::default()
-            })
-            .with(Terrain {
-                size: Vec2::new(32.0, 32.0),
-            });
-    }
-
-    for x in (0..100).filter(|&x| x < 50 || x > 60) {
-        commands
-            .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(1),
-                texture_atlas: texture_atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(
-                    x as f32 * 32.0 - 500.0,
-                    -300.0,
-                    0.0,
-                )),
+                transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
                 ..Default::default()
             })
             .with(Terrain {
