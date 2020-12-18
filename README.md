@@ -1,6 +1,6 @@
 # Mimimum Crappy Playable 2
 
-A minimum working example of bevy wasm.
+A minimum working example of bevy wasm 2d platformer.
 
 ## Setup
 
@@ -30,11 +30,9 @@ make run
 
 http://chintama.club/mcp2/
 
-Now it's 2d platformer.
-
 ## Note
 
 * To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
 * `W`, `A`, `S`, `D` keys to move the character. (You may first need to click the canvas to focus)
-* `E` to switch to `edit mode`.
+* `E` to switch to `debug mode`.
 * `P` to switch to `play mode`.
