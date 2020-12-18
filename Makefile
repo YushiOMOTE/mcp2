@@ -3,7 +3,7 @@ web_dir ?= static/
 wasm_dir ?= static/target
 
 
-.PHONY: setup build run
+.PHONY: setup build run tiles
 
 
 setup:
@@ -15,6 +15,10 @@ setup:
 build:
 	cargo build --target wasm32-unknown-unknown --release
 	wasm-bindgen --out-dir $(wasm_dir) --target web target/wasm32-unknown-unknown/release/$(crate_name).wasm
+
+
+tiles:
+	cd tiles && cargo run -p tiles -- test-tiled.tmx . ../src/tiles.json
 
 
 run: build
