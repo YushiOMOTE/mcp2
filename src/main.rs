@@ -3,6 +3,7 @@ use bevy::{
 };
 use derive_new::new;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 fn main() {
     App::build()
@@ -39,7 +40,7 @@ struct GameMode {
     debug_mode: bool,
 }
 
-struct Char {
+struct Player {
     keybinds: KeyBinds,
 }
 
@@ -62,11 +63,47 @@ struct CharMotion {
 #[derive(Debug)]
 struct Gravity;
 
+#[derive(Debug, Clone, Copy)]
+enum Dir {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum State {
+    Jump,
+    Run,
+    Stop,
+}
+
 #[derive(Debug)]
-struct Player {
-    on_ground: bool,
-    size: Vec2,
+struct Char {
+    dir: Dir,
+    state: State,
     velocity: Vec3,
+    size: Vec2,
+    on_ground: bool,
+}
+
+#[derive(Debug, new)]
+struct Animate {
+    animation: HashMap<State, Vec<u32>>,
+    #[new(default)]
+    index: usize,
+}
+
+impl Animate {
+    fn next(&mut self, state: State) -> u32 {
+        let animation = self.animation.get(&state).unwrap();
+        let index = animation[self.index % animation.len()];
+        self.index = (self.index + 1) % animation.len();
+        index
+    }
+}
+
+#[derive(Debug)]
+struct Enemy {
+    size: Vec2,
 }
 
 #[derive(Debug, new)]
@@ -159,6 +196,12 @@ fn setup_player(
 
     let atlas_handle = atlases.add(atlas);
 
+    let mut animate_map = HashMap::new();
+
+    animate_map.insert(State::Stop, vec![40]);
+    animate_map.insert(State::Run, (0..6).map(|v| v + 8).collect());
+    animate_map.insert(State::Jump, vec![40]);
+
     commands
         .spawn(Camera2dBundle::default())
         .spawn(SpriteSheetBundle {
@@ -167,7 +210,7 @@ fn setup_player(
             transform: Transform::from_translation(Vec3::new(10.0, 10.0, 0.0)),
             ..Default::default()
         })
-        .with(Char {
+        .with(Player {
             keybinds: KeyBinds {
                 up: KeyCode::W,
                 down: KeyCode::S,
@@ -177,12 +220,63 @@ fn setup_player(
         })
         .with(CharMotion::default())
         .with(Timer::from_seconds(0.2, true))
-        .with(Player {
-            on_ground: false,
-            size: Vec2::new(TILE_SIZE, TILE_SIZE),
+        .with(Char {
+            dir: Dir::Right,
+            state: State::Stop,
             velocity: Vec3::zero(),
+            size: Vec2::new(TILE_SIZE, TILE_SIZE),
+            on_ground: false,
         })
-        .with(Gravity);
+        .with(Gravity)
+        .with(Animate::new(animate_map));
+}
+
+fn setup_enemies(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    atlases: &mut ResMut<Assets<TextureAtlas>>,
+) {
+    // Load enemy animation
+    let texture = asset_server.load("textures/slime.png");
+    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(240.0 * 2.0, 80.0 * 2.0));
+    for y in 0..5 {
+        for x in 0..15 {
+            let x = x as f32 * TILE_SIZE;
+            let y = if y == 0 { 0.0 } else { y as f32 * TILE_SIZE };
+            atlas.add_texture(bevy::sprite::Rect {
+                min: Vec2::new(x, y),
+                max: Vec2::new(x + TILE_SIZE, y + TILE_SIZE),
+            });
+        }
+    }
+
+    let atlas_handle = atlases.add(atlas);
+
+    let mut animate_map = HashMap::new();
+
+    animate_map.insert(State::Stop, (0..15).map(|v| v + 15).collect());
+    animate_map.insert(State::Run, (0..15).map(|v| v + 15).collect());
+    animate_map.insert(State::Jump, vec![16]);
+
+    for i in 0..10 {
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite::new(15),
+                texture_atlas: atlas_handle.clone(),
+                transform: Transform::from_translation(Vec3::new(180.0 * i as f32, 500.0, 0.0)),
+                ..Default::default()
+            })
+            .with(Timer::from_seconds(0.2, true))
+            .with(Char {
+                dir: Dir::Right,
+                state: State::Stop,
+                velocity: Vec3::zero(),
+                size: Vec2::new(TILE_SIZE, TILE_SIZE),
+                on_ground: false,
+            })
+            .with(Animate::new(animate_map.clone()))
+            .with(Gravity);
+    }
 }
 
 fn setup(
@@ -191,40 +285,41 @@ fn setup(
     mut atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     setup_player(commands, &asset_server, &mut atlases);
+    setup_enemies(commands, &asset_server, &mut atlases);
     setup_terrain(commands, &asset_server, &mut atlases);
 }
 
 fn track_inputs_system(
     mut state: ResMut<TrackInputState>,
-    mut game_mode: ResMut<GameMode>,
     keys: Res<Events<KeyboardInput>>,
-    mut query: Query<(&Char, &mut CharMotion)>,
+    mut query: Query<(&Player, &mut CharMotion)>,
 ) {
     for e in state.keys.iter(&keys) {
-        for (char, mut state) in query.iter_mut() {
+        for (player, mut state) in query.iter_mut() {
             match e.key_code {
-                Some(k) if k == char.keybinds.up => {
+                Some(k) if k == player.keybinds.up => {
                     state.up = e.state.is_pressed();
                 }
-                Some(k) if k == char.keybinds.down => {
+                Some(k) if k == player.keybinds.down => {
                     state.down = e.state.is_pressed();
                 }
-                Some(k) if k == char.keybinds.left => {
+                Some(k) if k == player.keybinds.left => {
                     state.left = e.state.is_pressed();
                 }
-                Some(k) if k == char.keybinds.right => {
+                Some(k) if k == player.keybinds.right => {
                     state.right = e.state.is_pressed();
                 }
-                Some(k) if k == KeyCode::E => {
-                    if !game_mode.debug_mode && e.state.is_pressed() {
-                        game_mode.debug_mode = true;
-                    }
-                }
-                Some(k) if k == KeyCode::P => {
-                    if game_mode.debug_mode && e.state.is_pressed() {
-                        game_mode.debug_mode = false;
-                    }
-                }
+                // TODO: Temporarily disbale because this is confusing
+                // Some(k) if k == KeyCode::E => {
+                //     if !game_mode.debug_mode && e.state.is_pressed() {
+                //         game_mode.debug_mode = true;
+                //     }
+                // }
+                // Some(k) if k == KeyCode::P => {
+                //     if game_mode.debug_mode && e.state.is_pressed() {
+                //         game_mode.debug_mode = false;
+                //     }
+                // }
                 _ => {}
             }
 
@@ -239,54 +334,47 @@ fn track_inputs_system(
 
 fn animate_system(
     time: Res<Time>,
-    game_mode: Res<GameMode>,
-    mut query: Query<(&Player, &mut Timer, &mut TextureAtlasSprite)>,
+    mut query: Query<(&Char, &mut Animate, &mut Timer, &mut TextureAtlasSprite)>,
 ) {
-    for (player, mut timer, mut sprite) in query.iter_mut() {
+    for (ch, mut animate, mut timer, mut sprite) in query.iter_mut() {
         timer.tick(time.delta_seconds);
         if timer.finished {
-            if game_mode.debug_mode {
-                sprite.index = 1;
-            } else if player.velocity.x != 0.0 {
-                sprite.index = ((sprite.index as usize + 1) % 6 + 8) as u32;
-            } else {
-                sprite.index = 40;
-            }
+            sprite.index = animate.next(ch.state);
         }
     }
 }
 
-fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Player, &CharMotion)>) {
-    for (mut player, state) in query.iter_mut() {
+fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Char, &Player, &CharMotion)>) {
+    for (mut ch, _, state) in query.iter_mut() {
         if game_mode.debug_mode {
             if state.up {
-                player.velocity.y = 300.0;
+                ch.velocity.y = 300.0;
             } else if state.down {
-                player.velocity.y = -300.0;
+                ch.velocity.y = -300.0;
             } else {
-                player.velocity.y = 0.0;
+                ch.velocity.y = 0.0;
             }
-        } else if state.up && player.on_ground {
-            player.velocity.y = 500.0;
-            player.on_ground = false;
+        } else if state.up && ch.on_ground {
+            ch.velocity.y = 500.0;
+            ch.on_ground = false;
         }
 
         if state.right {
-            player.velocity.x = 300.0;
+            ch.velocity.x = 300.0;
         } else if state.left {
-            player.velocity.x = -300.0;
+            ch.velocity.x = -300.0;
         } else {
-            player.velocity.x = 0.0;
+            ch.velocity.x = 0.0;
         }
     }
 }
 
-fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Player>) {
+fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Char>) {
     if game_mode.debug_mode {
         return;
     }
-    for mut player in query.iter_mut() {
-        player.velocity.y -= 9.8;
+    for mut ch in query.iter_mut() {
+        ch.velocity.y -= 9.8;
     }
 }
 
@@ -312,18 +400,20 @@ fn to_rect(translation: &Vec3, size: &Vec2) -> Rect<f32> {
 
 fn physics_system(
     time: Res<Time>,
-    mut query: Query<(&mut Player, &mut Transform)>,
+    mut query: Query<(&mut Char, &mut Transform)>,
     mut terrains: Query<(&Terrain, &Transform)>,
 ) {
-    for (mut p, mut pt) in query.iter_mut() {
-        let player = to_rect(&pt.translation, &p.size);
+    for (mut ch, mut cht) in query.iter_mut() {
+        let old_ch = to_rect(&cht.translation, &ch.size);
 
-        let new_player_pos = pt.translation + time.delta_seconds * p.velocity;
-        let new_player = to_rect(&new_player_pos, &p.size);
+        let new_ch_pos = cht.translation + time.delta_seconds * ch.velocity;
+        let new_ch = to_rect(&new_ch_pos, &ch.size);
 
-        let mut possible_y = new_player_pos.y;
-        let mut possible_x = new_player_pos.x;
-        let mut new_velocity = p.velocity.clone();
+        let mut possible_y = new_ch_pos.y;
+        let mut possible_x = new_ch_pos.x;
+        let mut new_velocity = ch.velocity.clone();
+
+        ch.on_ground = false;
 
         for (t, tt) in terrains.iter_mut() {
             if !t.collision {
@@ -332,66 +422,84 @@ fn physics_system(
 
             let terrain = to_rect(&tt.translation, &t.size);
 
-            if new_player.right <= terrain.left
-                || terrain.right <= new_player.left
-                || new_player.top <= terrain.bottom
-                || terrain.top <= new_player.bottom
+            if new_ch.right <= terrain.left
+                || terrain.right <= new_ch.left
+                || new_ch.top <= terrain.bottom
+                || terrain.top <= new_ch.bottom
             {
                 // no collision
                 continue;
             }
 
-            // can collide; constraint player position
+            // can collide; constraint character position
 
             // time until top/bottom collision
-            let ty = if p.velocity.y < 0.0 && terrain.top <= player.bottom {
-                (terrain.top - player.bottom) / p.velocity.y
-            } else if p.velocity.y > 0.0 && player.top <= terrain.bottom {
-                (terrain.bottom - player.top) / p.velocity.y
+            let ty = if ch.velocity.y < 0.0 && terrain.top <= old_ch.bottom {
+                (terrain.top - old_ch.bottom) / ch.velocity.y
+            } else if ch.velocity.y > 0.0 && old_ch.top <= terrain.bottom {
+                (terrain.bottom - old_ch.top) / ch.velocity.y
             } else {
                 f32::INFINITY
             };
 
             // time until left/right collision
-            let tx = if p.velocity.x < 0.0 && terrain.right <= player.left {
-                (terrain.right - player.left) / p.velocity.x
-            } else if p.velocity.x > 0.0 && player.right <= terrain.left {
-                (terrain.left - player.right) / p.velocity.x
+            let tx = if ch.velocity.x < 0.0 && terrain.right <= old_ch.left {
+                (terrain.right - old_ch.left) / ch.velocity.x
+            } else if ch.velocity.x > 0.0 && old_ch.right <= terrain.left {
+                (terrain.left - old_ch.right) / ch.velocity.x
             } else {
                 f32::INFINITY
             };
 
-            p.on_ground = ty == 0.0;
+            ch.on_ground = ty == 0.0;
 
             if ty < tx {
                 // top/bottom collides before left/right collides
 
-                if p.velocity.y < 0.0 {
-                    // player bottom collides
+                if ch.velocity.y < 0.0 {
+                    // character bottom collides
                     possible_y = possible_y.max(terrain.top);
                 } else {
-                    // player top collides
-                    possible_y = possible_y.min(terrain.bottom - p.size.y);
+                    // character top collides
+                    possible_y = possible_y.min(terrain.bottom - ch.size.y);
                 }
 
                 new_velocity.y = 0.0;
             } else {
                 // left/right collides before top/bottom collides
 
-                if p.velocity.x < 0.0 {
-                    // player left collides
+                if ch.velocity.x < 0.0 {
+                    // character left collides
                     possible_x = possible_x.max(terrain.right);
                 } else {
-                    // player right collides
-                    possible_x = possible_x.min(terrain.left - p.size.x);
+                    // character right collides
+                    possible_x = possible_x.min(terrain.left - ch.size.x);
                 }
 
                 new_velocity.x = 0.0;
             }
         }
 
-        pt.translation.x = possible_x;
-        pt.translation.y = possible_y;
-        p.velocity = new_velocity;
+        cht.translation.x = possible_x;
+        cht.translation.y = possible_y;
+        ch.velocity = new_velocity;
+
+        if ch.velocity.x != 0.0 {
+            if ch.velocity.x > 0.0 {
+                ch.dir = Dir::Right;
+                cht.rotation = Quat::default();
+            } else {
+                ch.dir = Dir::Left;
+                cht.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+            }
+        }
+
+        if ch.velocity.y != 0.0 {
+            ch.state = State::Jump;
+        } else if ch.velocity.x != 0.0 {
+            ch.state = State::Run;
+        } else {
+            ch.state = State::Stop;
+        }
     }
 }
