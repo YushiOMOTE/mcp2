@@ -1,12 +1,7 @@
 use bevy::{
-    asset::AssetServerSettings,
-    input::{
-        keyboard::KeyboardInput,
-        mouse::{MouseButtonInput, MouseMotion, MouseWheel},
-    },
-    prelude::*,
-    render::camera::Camera,
+    asset::AssetServerSettings, input::keyboard::KeyboardInput, prelude::*, render::camera::Camera,
 };
+use derive_new::new;
 use serde::{Deserialize, Serialize};
 
 fn main() {
@@ -37,13 +32,9 @@ fn main() {
 #[derive(Default)]
 struct TrackInputState {
     keys: EventReader<KeyboardInput>,
-    cursor: EventReader<CursorMoved>,
-    motion: EventReader<MouseMotion>,
-    mousebtn: EventReader<MouseButtonInput>,
-    scroll: EventReader<MouseWheel>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct GameMode {
     debug_mode: bool,
 }
@@ -52,6 +43,7 @@ struct Char {
     keybinds: KeyBinds,
 }
 
+#[derive(Debug)]
 struct KeyBinds {
     up: KeyCode,
     down: KeyCode,
@@ -59,7 +51,7 @@ struct KeyBinds {
     right: KeyCode,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct CharMotion {
     up: bool,
     down: bool,
@@ -67,16 +59,20 @@ struct CharMotion {
     right: bool,
 }
 
+#[derive(Debug)]
 struct Gravity;
 
+#[derive(Debug)]
 struct Player {
     on_ground: bool,
     size: Vec2,
     velocity: Vec3,
 }
 
+#[derive(Debug, new)]
 struct Terrain {
     size: Vec2,
+    collision: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -84,51 +80,90 @@ struct Tile {
     map: Vec<Vec<u32>>,
 }
 
-fn load_tiles() -> Tile {
+fn load_tilemap() -> Tile {
     serde_json::from_slice(include_bytes!("tiles.json")).unwrap()
 }
 
-fn setup(
-    commands: &mut Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-) {
-    let char_texture_handle = asset_server.load("textures/char.png");
-    let mut char_texture_atlas =
-        TextureAtlas::new_empty(char_texture_handle, Vec2::new(128.0 * 2.0, 240.0 * 2.0));
-    for y in 0..15 {
-        for x in 0..8 {
-            let x = x as f32 * 32.0;
-            let y = y as f32 * 32.0;
-            char_texture_atlas.add_texture(bevy::sprite::Rect {
-                min: Vec2::new(x, y),
-                max: Vec2::new(x + 32.0, y + 32.0),
-            });
-        }
-    }
+const TILE_SIZE: f32 = 32.0;
 
-    let texture_handle = asset_server.load("textures/tiles.png");
-    let mut texture_atlas =
-        TextureAtlas::new_empty(texture_handle, Vec2::new(192.0 * 2.0, 96.0 * 2.0));
+fn setup_terrain(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    atlases: &mut ResMut<Assets<TextureAtlas>>,
+) {
+    const TEXTURE_WIDTH: f32 = 192.0 * 2.0;
+    const TEXTURE_HEIGHT: f32 = 96.0 * 2.0;
+
+    // Load and process tiles texture
+    let texture = asset_server.load("textures/tiles.png");
+    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(TEXTURE_WIDTH, TEXTURE_HEIGHT));
     for y in 0..6 {
         for x in 0..12 {
-            let x = x as f32 * 32.0;
-            let y = y as f32 * 32.0;
-            texture_atlas.add_texture(bevy::sprite::Rect {
+            let x = x as f32 * TILE_SIZE;
+            let y = y as f32 * TILE_SIZE;
+            atlas.add_texture(bevy::sprite::Rect {
                 min: Vec2::new(x, y),
-                max: Vec2::new(x + 32.0, y + 32.0),
+                max: Vec2::new(x + TILE_SIZE, y + TILE_SIZE),
             });
         }
     }
 
-    let char_texture_atlas_handle = texture_atlases.add(char_texture_atlas);
-    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let atlas_handle = atlases.add(atlas);
+
+    // Load tilemap
+    let tile = load_tilemap();
+    let xbase = -100.0;
+    let ybase = 100.0;
+
+    // Render tiles
+    for (x, y, &i) in tile
+        .map
+        .iter()
+        .enumerate()
+        .map(|(y, v)| v.iter().enumerate().map(move |(x, i)| (x, y, i)))
+        .flatten()
+        .filter(|(_, _, &i)| i != 0)
+    {
+        let x = x as f32 * TILE_SIZE + xbase;
+        let y = y as f32 * -TILE_SIZE + ybase;
+
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite::new(i - 1),
+                texture_atlas: atlas_handle.clone(),
+                transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
+                ..Default::default()
+            })
+            .with(Terrain::new(Vec2::new(TILE_SIZE, TILE_SIZE), true));
+    }
+}
+
+fn setup_player(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    atlases: &mut ResMut<Assets<TextureAtlas>>,
+) {
+    // Load character animation
+    let texture = asset_server.load("textures/char.png");
+    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(128.0 * 2.0, 240.0 * 2.0));
+    for y in 0..15 {
+        for x in 0..8 {
+            let x = x as f32 * TILE_SIZE;
+            let y = y as f32 * TILE_SIZE;
+            atlas.add_texture(bevy::sprite::Rect {
+                min: Vec2::new(x, y),
+                max: Vec2::new(x + TILE_SIZE, y + TILE_SIZE),
+            });
+        }
+    }
+
+    let atlas_handle = atlases.add(atlas);
 
     commands
         .spawn(Camera2dBundle::default())
         .spawn(SpriteSheetBundle {
             sprite: TextureAtlasSprite::new(2),
-            texture_atlas: char_texture_atlas_handle,
+            texture_atlas: atlas_handle,
             transform: Transform::from_translation(Vec3::new(10.0, 10.0, 0.0)),
             ..Default::default()
         })
@@ -144,49 +179,25 @@ fn setup(
         .with(Timer::from_seconds(0.2, true))
         .with(Player {
             on_ground: false,
-            size: Vec2::new(32.0, 32.0),
+            size: Vec2::new(TILE_SIZE, TILE_SIZE),
             velocity: Vec3::zero(),
         })
         .with(Gravity);
+}
 
-    let tile = load_tiles();
-
-    let xbase = -100.0;
-    let ybase = 100.0;
-
-    for (x, y, &i) in tile
-        .map
-        .iter()
-        .enumerate()
-        .map(|(y, v)| v.iter().enumerate().map(move |(x, i)| (x, y, i)))
-        .flatten()
-        .filter(|(_, _, &i)| i != 0)
-    {
-        let x = x as f32 * 32.0 + xbase;
-        let y = y as f32 * -32.0 + ybase;
-        info!("x={}, y={}, i={}", x, y, i);
-
-        commands
-            .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(i - 1),
-                texture_atlas: texture_atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
-                ..Default::default()
-            })
-            .with(Terrain {
-                size: Vec2::new(32.0, 32.0),
-            });
-    }
+fn setup(
+    commands: &mut Commands,
+    asset_server: Res<AssetServer>,
+    mut atlases: ResMut<Assets<TextureAtlas>>,
+) {
+    setup_player(commands, &asset_server, &mut atlases);
+    setup_terrain(commands, &asset_server, &mut atlases);
 }
 
 fn track_inputs_system(
     mut state: ResMut<TrackInputState>,
     mut game_mode: ResMut<GameMode>,
     keys: Res<Events<KeyboardInput>>,
-    cursor: Res<Events<CursorMoved>>,
-    motion: Res<Events<MouseMotion>>,
-    mousebtn: Res<Events<MouseButtonInput>>,
-    scroll: Res<Events<MouseWheel>>,
     mut query: Query<(&Char, &mut CharMotion)>,
 ) {
     for e in state.keys.iter(&keys) {
@@ -223,26 +234,6 @@ fn track_inputs_system(
                 info!("Key released `{:?}`", e.key_code);
             }
         }
-    }
-
-    for e in state.cursor.iter(&cursor) {
-        info!("Cursor at {}", e.position);
-    }
-
-    for e in state.motion.iter(&motion) {
-        info!("Mouse moved {} pixels", e.delta);
-    }
-
-    for e in state.mousebtn.iter(&mousebtn) {
-        if e.state.is_pressed() {
-            info!("Mouse pressed `{:?}`", e.button);
-        } else {
-            info!("Mouse released `{:?}`", e.button)
-        }
-    }
-
-    for e in state.scroll.iter(&scroll) {
-        info!("Scrolled direction ({}, {})", e.x, e.y);
     }
 }
 
@@ -299,15 +290,6 @@ fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Player>) {
     }
 }
 
-fn to_rect(translation: &Vec3, size: &Vec2) -> Rect<f32> {
-    Rect {
-        left: translation.x,
-        right: translation.x + size.x,
-        bottom: translation.y,
-        top: translation.y + size.y,
-    }
-}
-
 fn camera_system(
     query: Query<(&Player, &Transform)>,
     mut camera: Query<(&mut Camera, &mut Transform)>,
@@ -316,6 +298,15 @@ fn camera_system(
         for (_, mut camera_transform) in camera.iter_mut() {
             camera_transform.translation = player_transform.translation.clone();
         }
+    }
+}
+
+fn to_rect(translation: &Vec3, size: &Vec2) -> Rect<f32> {
+    Rect {
+        left: translation.x,
+        right: translation.x + size.x,
+        bottom: translation.y,
+        top: translation.y + size.y,
     }
 }
 
@@ -335,6 +326,10 @@ fn physics_system(
         let mut new_velocity = p.velocity.clone();
 
         for (t, tt) in terrains.iter_mut() {
+            if !t.collision {
+                continue;
+            }
+
             let terrain = to_rect(&tt.translation, &t.size);
 
             if new_player.right <= terrain.left
