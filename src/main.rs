@@ -453,7 +453,7 @@ fn physics_system(
 
             ch.on_ground = ty == 0.0;
 
-            if ty < tx {
+            if ty <= tx {
                 // top/bottom collides before left/right collides
 
                 if ch.velocity.y < 0.0 {
