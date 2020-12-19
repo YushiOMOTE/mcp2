@@ -121,7 +121,7 @@ fn load_tilemap() -> Tile {
     serde_json::from_slice(include_bytes!("tiles.json")).unwrap()
 }
 
-const TILE_SIZE: f32 = 32.0;
+const TILE_SIZE: f32 = 16.0;
 
 fn setup_terrain(
     commands: &mut Commands,
@@ -133,17 +133,7 @@ fn setup_terrain(
 
     // Load and process tiles texture
     let texture = asset_server.load("textures/tiles.png");
-    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(TEXTURE_WIDTH, TEXTURE_HEIGHT));
-    for y in 0..6 {
-        for x in 0..12 {
-            let x = x as f32 * TILE_SIZE;
-            let y = y as f32 * TILE_SIZE;
-            atlas.add_texture(bevy::sprite::Rect {
-                min: Vec2::new(x, y),
-                max: Vec2::new(x + TILE_SIZE, y + TILE_SIZE),
-            });
-        }
-    }
+    let atlas = TextureAtlas::from_grid(texture, Vec2::new(TILE_SIZE, TILE_SIZE), 11, 8);
 
     let atlas_handle = atlases.add(atlas);
 
@@ -182,28 +172,22 @@ fn setup_player(
 ) {
     // Load character animation
     let texture = asset_server.load("textures/char.png");
-    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(128.0 * 2.0, 240.0 * 2.0));
-    for y in 0..15 {
-        for x in 0..8 {
-            let x = x as f32 * TILE_SIZE;
-            let y = y as f32 * TILE_SIZE;
-            atlas.add_texture(bevy::sprite::Rect {
-                min: Vec2::new(x, y),
-                max: Vec2::new(x + TILE_SIZE, y + TILE_SIZE),
-            });
-        }
-    }
+    let atlas = TextureAtlas::from_grid(texture, Vec2::new(TILE_SIZE, TILE_SIZE), 26, 1);
 
     let atlas_handle = atlases.add(atlas);
 
     let mut animate_map = HashMap::new();
 
-    animate_map.insert(State::Stop, vec![40]);
-    animate_map.insert(State::Run, (0..6).map(|v| v + 8).collect());
-    animate_map.insert(State::Jump, vec![40]);
+    animate_map.insert(State::Stop, (10..13).collect());
+    animate_map.insert(State::Run, (14..21).collect());
+    animate_map.insert(State::Jump, vec![8]);
+
+    let mut cam = Camera2dBundle::default();
+
+    cam.orthographic_projection.far = 1000.0 / 2.0;
 
     commands
-        .spawn(Camera2dBundle::default())
+        .spawn(cam)
         .spawn(SpriteSheetBundle {
             sprite: TextureAtlasSprite::new(2),
             texture_atlas: atlas_handle,
@@ -237,26 +221,16 @@ fn setup_enemies(
     atlases: &mut ResMut<Assets<TextureAtlas>>,
 ) {
     // Load enemy animation
-    let texture = asset_server.load("textures/slime.png");
-    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(240.0 * 2.0, 80.0 * 2.0));
-    for y in 0..5 {
-        for x in 0..15 {
-            let x = x as f32 * TILE_SIZE;
-            let y = if y == 0 { 0.0 } else { y as f32 * TILE_SIZE };
-            atlas.add_texture(bevy::sprite::Rect {
-                min: Vec2::new(x, y),
-                max: Vec2::new(x + TILE_SIZE, y + TILE_SIZE),
-            });
-        }
-    }
+    let texture = asset_server.load("textures/enemy.png");
+    let atlas = TextureAtlas::from_grid(texture, Vec2::new(TILE_SIZE, TILE_SIZE), 26, 1);
 
     let atlas_handle = atlases.add(atlas);
 
     let mut animate_map = HashMap::new();
 
-    animate_map.insert(State::Stop, (0..15).map(|v| v + 15).collect());
-    animate_map.insert(State::Run, (0..15).map(|v| v + 15).collect());
-    animate_map.insert(State::Jump, vec![16]);
+    animate_map.insert(State::Stop, (10..13).collect());
+    animate_map.insert(State::Run, (14..21).collect());
+    animate_map.insert(State::Jump, vec![8]);
 
     for i in 0..10 {
         commands
