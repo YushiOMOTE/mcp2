@@ -5,6 +5,10 @@ use derive_new::new;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+mod atlas;
+
+use crate::atlas::AtlasBuilder;
+
 fn main() {
     App::build()
         .add_resource(WindowDescriptor {
@@ -121,28 +125,18 @@ fn load_tilemap() -> Tile {
     serde_json::from_slice(include_bytes!("tiles.json")).unwrap()
 }
 
-const TILE_SIZE: f32 = 16.0;
-
 fn setup_terrain(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     atlases: &mut ResMut<Assets<TextureAtlas>>,
 ) {
-    // Load and process tiles texture
-    let texture = asset_server.load("textures/tiles.png");
-    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(176.0, 135.0));
-    (0..8)
-        .map(|y| (0..11).map(move |x| (x, y)))
-        .flatten()
-        .map(|(x, y)| (x as f32 * 16.0, y as f32 * 16.0))
-        .for_each(|(x, y)| {
-            atlas.add_texture(bevy::sprite::Rect {
-                min: Vec2::new(x, y),
-                max: Vec2::new(x + 16.0, y + 16.0),
-            });
-        });
-
-    let atlas_handle = atlases.add(atlas);
+    let atlas_handle = AtlasBuilder::load(
+        asset_server,
+        Vec2::new(16.0, 16.0),
+        Vec2::new(176.0, 135.0),
+        "textures/tiles.png",
+    )
+    .build(atlases);
 
     // Load tilemap
     let tile = load_tilemap();
@@ -158,8 +152,8 @@ fn setup_terrain(
         .flatten()
         .filter(|(_, _, &i)| i != 0)
     {
-        let x = x as f32 * TILE_SIZE + xbase;
-        let y = y as f32 * -TILE_SIZE + ybase;
+        let x = x as f32 * 16.0 + xbase;
+        let y = y as f32 * -16.0 + ybase;
 
         commands
             .spawn(SpriteSheetBundle {
@@ -168,7 +162,7 @@ fn setup_terrain(
                 transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
                 ..Default::default()
             })
-            .with(Terrain::new(Vec2::new(TILE_SIZE, TILE_SIZE), true));
+            .with(Terrain::new(Vec2::new(16.0, 16.0), true));
     }
 }
 
@@ -177,30 +171,23 @@ fn setup_player(
     asset_server: &Res<AssetServer>,
     atlases: &mut ResMut<Assets<TextureAtlas>>,
 ) {
-    // Load character animation
-    let texture = asset_server.load("textures/char.png");
-    let atlas = TextureAtlas::from_grid_with_padding(
-        texture,
-        Vec2::new(16.0, 32.0),
-        26,
-        1,
-        Vec2::new(10.0, 10.0),
-    );
-
-    let atlas_handle = atlases.add(atlas);
+    let atlas_handle = AtlasBuilder::load(
+        asset_server,
+        Vec2::new(1300.0 / 26.0, 50.0),
+        Vec2::new(1300.0, 50.0),
+        "textures/char.png",
+    )
+    .padding(Vec2::new(17.0, 9.0))
+    .scale(Vec2::splat(1.0 / 1.7))
+    .build(atlases);
 
     let mut animate_map = HashMap::new();
-
     animate_map.insert(State::Stop, (10..13).collect());
     animate_map.insert(State::Run, (16..21).collect());
     animate_map.insert(State::Jump, vec![8, 9]);
 
-    let mut cam = Camera2dBundle::default();
-
-    cam.orthographic_projection.far = 1000.0 / 2.0;
-
     commands
-        .spawn(cam)
+        .spawn(Camera2dBundle::default())
         .spawn(SpriteSheetBundle {
             sprite: TextureAtlasSprite::new(8),
             texture_atlas: atlas_handle,
@@ -233,20 +220,18 @@ fn setup_enemies(
     asset_server: &Res<AssetServer>,
     atlases: &mut ResMut<Assets<TextureAtlas>>,
 ) {
-    // Load enemy animation
-    let texture = asset_server.load("textures/enemy.png");
-    let atlas = TextureAtlas::from_grid_with_padding(
-        texture,
-        Vec2::new(16.0, 32.0),
-        32,
-        1,
-        Vec2::new(0.0, 0.0),
-    );
-
-    let atlas_handle = atlases.add(atlas);
+    let atlas_handle = AtlasBuilder::load(
+        asset_server,
+        Vec2::new(1600.0 / 32.0, 50.0),
+        Vec2::new(1600.0, 50.0),
+        "textures/enemy.png",
+    )
+    .padding(Vec2::new(0.0, 0.0))
+    .scale(Vec2::splat(1.0 / 1.7))
+    .offset(Vec2::new(0.0, -5.0))
+    .build(atlases);
 
     let mut animate_map = HashMap::new();
-
     animate_map.insert(State::Stop, (8..24).collect());
     animate_map.insert(State::Run, (25..29).collect());
     animate_map.insert(State::Jump, vec![26]);
@@ -264,7 +249,7 @@ fn setup_enemies(
                 dir: Dir::Right,
                 state: State::Stop,
                 velocity: Vec3::zero(),
-                size: Vec2::new(TILE_SIZE, TILE_SIZE),
+                size: Vec2::new(16.0, 16.0),
                 on_ground: false,
             })
             .with(Animate::new(animate_map.clone()))
@@ -348,7 +333,7 @@ fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Char, &Play
                 ch.velocity.y = 0.0;
             }
         } else if state.up && ch.on_ground {
-            ch.velocity.y = 500.0;
+            ch.velocity.y = 300.0;
             ch.on_ground = false;
         }
 
