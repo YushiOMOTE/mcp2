@@ -32,6 +32,7 @@ fn main() {
         .add_stage_after(stage::UPDATE, "after")
         .add_system_to_stage("before", load_terrain_system)
         .add_system_to_stage("before", move_char_system)
+        .add_system_to_stage("before", random_walk_system)
         .add_system_to_stage("before", animate_system)
         .add_system_to_stage("before", gravity_system)
         .add_system_to_stage("after", physics_system)
@@ -72,7 +73,7 @@ struct CharMotion {
 #[derive(Debug)]
 struct Gravity;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dir {
     Left,
     Right,
@@ -88,10 +89,21 @@ enum State {
 #[derive(Debug)]
 struct Char {
     dir: Dir,
+    init_dir: Dir,
     state: State,
     velocity: Vec3,
     size: Vec2,
     on_ground: bool,
+}
+
+impl Char {
+    fn flip(&mut self, transform: &mut Transform) {
+        if self.dir != self.init_dir {
+            transform.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+        } else {
+            transform.rotation = Quat::default();
+        }
+    }
 }
 
 #[derive(Debug, new)]
@@ -111,8 +123,33 @@ impl Animate {
 }
 
 #[derive(Debug)]
-struct Enemy {
-    size: Vec2,
+struct RandomWalk {
+    timer: Timer,
+    move_possibility: f32,
+    jump_possibility: f32,
+}
+
+fn random_walk_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Char, &mut RandomWalk, &mut Transform)>,
+) {
+    use rand::Rng;
+
+    let mut rng = rand::thread_rng();
+
+    for (mut ch, mut walk, _) in query.iter_mut() {
+        walk.timer.tick(time.delta_seconds);
+        if walk.timer.finished {
+            if walk.jump_possibility > rng.gen_range(0.0..1.0) {
+                ch.velocity.y = 200.0;
+            }
+            if walk.move_possibility > rng.gen_range(0.0..1.0) {
+                ch.velocity.x = rng.gen_range(-100.0..100.0);
+            } else {
+                ch.velocity.x = 0.0;
+            }
+        }
+    }
 }
 
 #[derive(Debug, new)]
@@ -203,6 +240,7 @@ fn setup_player(
         .with(Timer::from_seconds(0.2, true))
         .with(Char {
             dir: Dir::Right,
+            init_dir: Dir::Right,
             state: State::Stop,
             velocity: Vec3::zero(),
             size: Vec2::new(16.0, 16.0),
@@ -248,12 +286,18 @@ fn setup_enemies(
             .with(Timer::from_seconds(0.2, true))
             .with(Char {
                 dir: Dir::Right,
+                init_dir: Dir::Left,
                 state: State::Stop,
                 velocity: Vec3::zero(),
                 size: Vec2::new(16.0, 16.0),
                 on_ground: false,
             })
             .with(Animate::new(animate_map.clone()))
+            .with(RandomWalk {
+                timer: Timer::from_seconds(1.0, true),
+                move_possibility: 0.3,
+                jump_possibility: 0.3,
+            })
             .with(Gravity);
     }
 }
@@ -525,11 +569,10 @@ fn physics_system(
         if ch.velocity.x != 0.0 {
             if ch.velocity.x > 0.0 {
                 ch.dir = Dir::Right;
-                cht.rotation = Quat::default();
             } else {
                 ch.dir = Dir::Left;
-                cht.rotation = Quat::from_rotation_y(std::f32::consts::PI);
             }
+            ch.flip(&mut cht);
         }
 
         if ch.velocity.y != 0.0 {
