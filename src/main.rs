@@ -388,7 +388,7 @@ fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Char, &Play
                 ch.velocity.y = 0.0;
             }
         } else if state.up && ch.on_ground {
-            ch.velocity.y = 200.0;
+            ch.velocity.y = 300.0;
             ch.on_ground = false;
         }
 
