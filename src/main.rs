@@ -276,10 +276,10 @@ fn load_terrain_system(
     }
     tileinfo.center = center.translation;
 
-    let min_x = center.translation.x + proj.left;
-    let min_y = center.translation.y + proj.bottom;
-    let max_x = center.translation.x + proj.right;
-    let max_y = center.translation.y + proj.top;
+    let min_x = center.translation.x + proj.left * center.scale.x * 1.5;
+    let min_y = center.translation.y + proj.bottom * center.scale.y * 1.5;
+    let max_x = center.translation.x + proj.right * center.scale.x * 1.5;
+    let max_y = center.translation.y + proj.top * center.scale.y * 1.5;
 
     let handle = tileinfo.atlas_handle.clone();
 
