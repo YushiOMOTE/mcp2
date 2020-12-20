@@ -188,7 +188,7 @@ fn setup_player(
         .spawn(SpriteSheetBundle {
             sprite: TextureAtlasSprite::new(8),
             texture_atlas: atlas_handle,
-            transform: Transform::from_translation(Vec3::new(10.0, 10.0, 0.0)),
+            transform: Transform::from_translation(Vec3::new(1000.0, -500.0, 0.0)),
             ..Default::default()
         })
         .with(Player {
@@ -238,7 +238,11 @@ fn setup_enemies(
             .spawn(SpriteSheetBundle {
                 sprite: TextureAtlasSprite::new(15),
                 texture_atlas: atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(180.0 * i as f32, 500.0, 0.0)),
+                transform: Transform::from_translation(Vec3::new(
+                    180.0 * i as f32 + 500.0,
+                    -500.0,
+                    0.0,
+                )),
                 ..Default::default()
             })
             .with(Timer::from_seconds(0.2, true))
