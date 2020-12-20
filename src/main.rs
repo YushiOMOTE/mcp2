@@ -1,5 +1,6 @@
 use bevy::{
     asset::AssetServerSettings, input::keyboard::KeyboardInput, prelude::*, render::camera::Camera,
+    render::camera::OrthographicProjection,
 };
 use derive_new::new;
 use serde::{Deserialize, Serialize};
@@ -20,12 +21,16 @@ fn main() {
             asset_folder: option_env!("MCP2_PREFIX").unwrap_or("/").to_string(),
         })
         .add_plugins(bevy_webgl2::DefaultPlugins)
-        .add_startup_system(setup)
+        .add_startup_system(setup_enemies)
+        .add_startup_system(setup_player)
+        .add_startup_system(setup_terrain)
         .init_resource::<TrackInputState>()
         .init_resource::<GameMode>()
+        .init_resource::<TileInfo>()
         .add_system(track_inputs_system)
         .add_stage_after(stage::UPDATE, "before")
         .add_stage_after(stage::UPDATE, "after")
+        .add_system_to_stage("before", load_terrain_system)
         .add_system_to_stage("before", move_char_system)
         .add_system_to_stage("before", animate_system)
         .add_system_to_stage("before", gravity_system)
@@ -116,70 +121,62 @@ struct Terrain {
     collision: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Tile {
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct TileMap {
     map: Vec<Vec<u32>>,
 }
 
-fn load_tilemap() -> Tile {
+#[derive(Debug, Default)]
+struct TileInfo {
+    center: Vec3,
+    loaded: Vec<(usize, usize, u32, Option<Entity>)>,
+    atlas_handle: Handle<TextureAtlas>,
+    timer: Timer,
+}
+
+fn load_tilemap() -> TileMap {
     serde_json::from_slice(include_bytes!("tiles.json")).unwrap()
 }
 
 fn setup_terrain(
-    commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    atlases: &mut ResMut<Assets<TextureAtlas>>,
+    asset_server: Res<AssetServer>,
+    mut tileinfo: ResMut<TileInfo>,
+    mut atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let atlas_handle = AtlasBuilder::load(
-        asset_server,
+        &asset_server,
         Vec2::new(16.0, 16.0),
         Vec2::new(176.0, 135.0),
         "textures/tiles.png",
     )
-    .build(atlases);
+    .build(&mut atlases);
 
-    // Load tilemap
-    let tile = load_tilemap();
-    let xbase = -100.0;
-    let ybase = 100.0;
-
-    // Render tiles
-    for (x, y, &i) in tile
+    tileinfo.loaded = load_tilemap()
         .map
-        .iter()
+        .into_iter()
         .enumerate()
-        .map(|(y, v)| v.iter().enumerate().map(move |(x, i)| (x, y, i)))
+        .map(|(y, v)| v.into_iter().enumerate().map(move |(x, i)| (x, y, i, None)))
         .flatten()
-        .filter(|(_, _, &i)| i != 0)
-    {
-        let x = x as f32 * 16.0 + xbase;
-        let y = y as f32 * -16.0 + ybase;
-
-        commands
-            .spawn(SpriteSheetBundle {
-                sprite: TextureAtlasSprite::new(i - 1),
-                texture_atlas: atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
-                ..Default::default()
-            })
-            .with(Terrain::new(Vec2::new(16.0, 16.0), true));
-    }
+        .filter(|(_, _, i, _)| *i != 0)
+        .collect();
+    tileinfo.atlas_handle = atlas_handle;
+    tileinfo.timer = Timer::from_seconds(0.2, true);
 }
 
 fn setup_player(
     commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    atlases: &mut ResMut<Assets<TextureAtlas>>,
+    asset_server: Res<AssetServer>,
+    mut atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let atlas_handle = AtlasBuilder::load(
-        asset_server,
+        &asset_server,
         Vec2::new(1300.0 / 26.0, 50.0),
         Vec2::new(1300.0, 50.0),
         "textures/char.png",
     )
     .padding(Vec2::new(17.0, 9.0))
     .scale(Vec2::splat(1.0 / 1.7))
-    .build(atlases);
+    .build(&mut atlases);
 
     let mut animate_map = HashMap::new();
     animate_map.insert(State::Stop, (10..13).collect());
@@ -217,11 +214,11 @@ fn setup_player(
 
 fn setup_enemies(
     commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    atlases: &mut ResMut<Assets<TextureAtlas>>,
+    asset_server: Res<AssetServer>,
+    mut atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let atlas_handle = AtlasBuilder::load(
-        asset_server,
+        &asset_server,
         Vec2::new(1600.0 / 32.0, 50.0),
         Vec2::new(1600.0, 50.0),
         "textures/enemy.png",
@@ -229,7 +226,7 @@ fn setup_enemies(
     .padding(Vec2::new(0.0, 0.0))
     .scale(Vec2::splat(1.0 / 1.7))
     .offset(Vec2::new(0.0, -5.0))
-    .build(atlases);
+    .build(&mut atlases);
 
     let mut animate_map = HashMap::new();
     animate_map.insert(State::Stop, (8..24).collect());
@@ -257,14 +254,72 @@ fn setup_enemies(
     }
 }
 
-fn setup(
+fn load_terrain_system(
+    time: Res<Time>,
     commands: &mut Commands,
-    asset_server: Res<AssetServer>,
-    mut atlases: ResMut<Assets<TextureAtlas>>,
+    mut tileinfo: ResMut<TileInfo>,
+    camera: Query<(&Camera, &OrthographicProjection, &Transform)>,
 ) {
-    setup_player(commands, &asset_server, &mut atlases);
-    setup_enemies(commands, &asset_server, &mut atlases);
-    setup_terrain(commands, &asset_server, &mut atlases);
+    let (_, proj, center) = camera.iter().next().unwrap();
+
+    tileinfo.timer.tick(time.delta_seconds);
+    if !tileinfo.timer.finished {
+        return;
+    }
+
+    if center.translation == tileinfo.center {
+        return;
+    }
+    tileinfo.center = center.translation;
+
+    let min_x = center.translation.x + proj.left;
+    let min_y = center.translation.y + proj.bottom;
+    let max_x = center.translation.x + proj.right;
+    let max_y = center.translation.y + proj.top;
+
+    let handle = tileinfo.atlas_handle.clone();
+
+    let mut loaded_count = 0;
+    let mut unloaded_count = 0;
+    let mut total = 0;
+
+    for (x, y, i, loaded) in tileinfo.loaded.iter_mut() {
+        let x = *x as f32 * 16.0;
+        let y = *y as f32 * -16.0;
+
+        if x >= min_x && x < max_x && y >= min_y && y < max_y {
+            if loaded.is_none() {
+                loaded_count += 1;
+
+                *loaded = Some(
+                    commands
+                        .spawn(SpriteSheetBundle {
+                            sprite: TextureAtlasSprite::new(*i - 1),
+                            texture_atlas: handle.clone(),
+                            transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
+                            ..Default::default()
+                        })
+                        .with(Terrain::new(Vec2::new(16.0, 16.0), true))
+                        .current_entity()
+                        .unwrap(),
+                );
+            }
+        } else {
+            if let Some(entity) = loaded.take() {
+                unloaded_count += 1;
+                commands.despawn(entity);
+            }
+        }
+
+        if loaded.is_some() {
+            total += 1;
+        }
+    }
+
+    info!(
+        "Loaded: {}, Unloaded: {} (Current: {})",
+        loaded_count, unloaded_count, total
+    );
 }
 
 fn track_inputs_system(
@@ -333,14 +388,14 @@ fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Char, &Play
                 ch.velocity.y = 0.0;
             }
         } else if state.up && ch.on_ground {
-            ch.velocity.y = 300.0;
+            ch.velocity.y = 200.0;
             ch.on_ground = false;
         }
 
         if state.right {
-            ch.velocity.x = 300.0;
+            ch.velocity.x = 100.0;
         } else if state.left {
-            ch.velocity.x = -300.0;
+            ch.velocity.x = -100.0;
         } else {
             ch.velocity.x = 0.0;
         }
