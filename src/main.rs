@@ -128,12 +128,19 @@ fn setup_terrain(
     asset_server: &Res<AssetServer>,
     atlases: &mut ResMut<Assets<TextureAtlas>>,
 ) {
-    const TEXTURE_WIDTH: f32 = 192.0 * 2.0;
-    const TEXTURE_HEIGHT: f32 = 96.0 * 2.0;
-
     // Load and process tiles texture
     let texture = asset_server.load("textures/tiles.png");
-    let atlas = TextureAtlas::from_grid(texture, Vec2::new(TILE_SIZE, TILE_SIZE), 11, 8);
+    let mut atlas = TextureAtlas::new_empty(texture, Vec2::new(176.0, 135.0));
+    (0..8)
+        .map(|y| (0..11).map(move |x| (x, y)))
+        .flatten()
+        .map(|(x, y)| (x as f32 * 16.0, y as f32 * 16.0))
+        .for_each(|(x, y)| {
+            atlas.add_texture(bevy::sprite::Rect {
+                min: Vec2::new(x, y),
+                max: Vec2::new(x + 16.0, y + 16.0),
+            });
+        });
 
     let atlas_handle = atlases.add(atlas);
 
@@ -172,15 +179,21 @@ fn setup_player(
 ) {
     // Load character animation
     let texture = asset_server.load("textures/char.png");
-    let atlas = TextureAtlas::from_grid(texture, Vec2::new(TILE_SIZE, TILE_SIZE), 26, 1);
+    let atlas = TextureAtlas::from_grid_with_padding(
+        texture,
+        Vec2::new(16.0, 32.0),
+        26,
+        1,
+        Vec2::new(10.0, 10.0),
+    );
 
     let atlas_handle = atlases.add(atlas);
 
     let mut animate_map = HashMap::new();
 
     animate_map.insert(State::Stop, (10..13).collect());
-    animate_map.insert(State::Run, (14..21).collect());
-    animate_map.insert(State::Jump, vec![8]);
+    animate_map.insert(State::Run, (16..21).collect());
+    animate_map.insert(State::Jump, vec![8, 9]);
 
     let mut cam = Camera2dBundle::default();
 
@@ -189,7 +202,7 @@ fn setup_player(
     commands
         .spawn(cam)
         .spawn(SpriteSheetBundle {
-            sprite: TextureAtlasSprite::new(2),
+            sprite: TextureAtlasSprite::new(8),
             texture_atlas: atlas_handle,
             transform: Transform::from_translation(Vec3::new(10.0, 10.0, 0.0)),
             ..Default::default()
@@ -208,7 +221,7 @@ fn setup_player(
             dir: Dir::Right,
             state: State::Stop,
             velocity: Vec3::zero(),
-            size: Vec2::new(TILE_SIZE, TILE_SIZE),
+            size: Vec2::new(16.0, 16.0),
             on_ground: false,
         })
         .with(Gravity)
@@ -222,15 +235,21 @@ fn setup_enemies(
 ) {
     // Load enemy animation
     let texture = asset_server.load("textures/enemy.png");
-    let atlas = TextureAtlas::from_grid(texture, Vec2::new(TILE_SIZE, TILE_SIZE), 26, 1);
+    let atlas = TextureAtlas::from_grid_with_padding(
+        texture,
+        Vec2::new(16.0, 32.0),
+        32,
+        1,
+        Vec2::new(0.0, 0.0),
+    );
 
     let atlas_handle = atlases.add(atlas);
 
     let mut animate_map = HashMap::new();
 
-    animate_map.insert(State::Stop, (10..13).collect());
-    animate_map.insert(State::Run, (14..21).collect());
-    animate_map.insert(State::Jump, vec![8]);
+    animate_map.insert(State::Stop, (8..24).collect());
+    animate_map.insert(State::Run, (25..29).collect());
+    animate_map.insert(State::Jump, vec![26]);
 
     for i in 0..10 {
         commands
@@ -359,6 +378,7 @@ fn camera_system(
     for (_, player_transform) in query.iter() {
         for (_, mut camera_transform) in camera.iter_mut() {
             camera_transform.translation = player_transform.translation.clone();
+            camera_transform.scale = Vec3::splat(0.3);
         }
     }
 }
