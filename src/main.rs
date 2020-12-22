@@ -207,18 +207,18 @@ fn setup_player(
 ) {
     let atlas_handle = AtlasBuilder::load(
         &asset_server,
-        Vec2::new(1300.0 / 26.0, 50.0),
-        Vec2::new(1300.0, 50.0),
+        Vec2::new(32.0, 32.0),
+        Vec2::new(160.0, 32.0),
         "textures/char.png",
     )
-    .padding(Vec2::new(17.0, 9.0))
-    .scale(Vec2::splat(1.0 / 1.7))
+    .padding(Vec2::new(0.0, 0.0))
+    .scale(Vec2::splat(1.0 / 2.0))
     .build(&mut atlases);
 
     let mut animate_map = HashMap::new();
-    animate_map.insert(State::Stop, (10..13).collect());
-    animate_map.insert(State::Run, (16..21).collect());
-    animate_map.insert(State::Jump, vec![8, 9]);
+    animate_map.insert(State::Stop, vec![0]);
+    animate_map.insert(State::Run, (1..5).collect());
+    animate_map.insert(State::Jump, vec![0]);
 
     commands
         .spawn(Camera2dBundle::default())
