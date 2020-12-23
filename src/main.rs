@@ -27,9 +27,10 @@ fn main() {
         .init_resource::<TrackInputState>()
         .init_resource::<GameMode>()
         .init_resource::<TileInfo>()
-        .add_system(track_inputs_system)
+        .init_resource::<CameraState>()
         .add_stage_after(stage::UPDATE, "before")
         .add_stage_after(stage::UPDATE, "after")
+        .add_system_to_stage(stage::PRE_UPDATE, camera_system)
         .add_system_to_stage("before", load_terrain_system)
         .add_system_to_stage("before", move_char_system)
         .add_system_to_stage("before", random_walk_system)
@@ -39,9 +40,37 @@ fn main() {
         .add_system_to_stage("before", attack_move_system)
         .add_system_to_stage("after", physics_system)
         .add_system_to_stage("after", attack_collision_system)
-        .add_system(camera_system)
+        .add_system(track_inputs_system)
+        .add_system(cleanup_attack_system)
         .add_system(shoot_system)
         .run();
+}
+
+#[derive(Debug, Default)]
+struct CameraState {
+    transform: Transform,
+    projection: OrthographicProjection,
+}
+
+impl CameraState {
+    fn scope(&self) -> (f32, f32, f32, f32) {
+        let min_x =
+            self.transform.translation.x + self.projection.left * self.transform.scale.x * 1.5;
+        let min_y =
+            self.transform.translation.y + self.projection.bottom * self.transform.scale.y * 1.5;
+        let max_x =
+            self.transform.translation.x + self.projection.right * self.transform.scale.x * 1.5;
+        let max_y =
+            self.transform.translation.y + self.projection.top * self.transform.scale.y * 1.5;
+        (min_x, min_y, max_x, max_y)
+    }
+
+    fn in_scope(&self, translation: &Vec3) -> bool {
+        let x = translation.x;
+        let y = translation.y;
+        let (min_x, min_y, max_x, max_y) = self.scope();
+        return min_x <= x && x <= max_x && min_y <= y && y <= max_y;
+    }
 }
 
 #[derive(Default)]
@@ -224,6 +253,7 @@ fn attack_move_system(time: Res<Time>, mut query: Query<(&Attack, &mut Transform
 
 fn attack_collision_system(
     commands: &mut Commands,
+    camera_state: Res<CameraState>,
     mut players: Query<(&mut Player, &Char, &Transform)>,
     mut enemies: Query<(Entity, &mut Enemy, &Char, &Transform)>,
     enemy_attacks: Query<(Entity, &EnemyAttack, &Transform)>,
@@ -255,6 +285,10 @@ fn attack_collision_system(
     }
 
     for (ee, mut enemy, ch, transform) in enemies.iter_mut() {
+        if !camera_state.in_scope(&transform.translation) {
+            continue;
+        }
+
         for (e, _, attack_transform) in player_attacks.iter() {
             let min_x = transform.translation.x;
             let min_y = transform.translation.y;
@@ -289,13 +323,17 @@ struct RandomWalk {
 
 fn random_walk_system(
     time: Res<Time>,
+    camera_state: Res<CameraState>,
     mut query: Query<(&mut Char, &mut RandomWalk, &mut Transform)>,
 ) {
     use rand::Rng;
 
     let mut rng = rand::thread_rng();
 
-    for (mut ch, mut walk, _) in query.iter_mut() {
+    for (mut ch, mut walk, transform) in query.iter_mut() {
+        if !camera_state.in_scope(&transform.translation) {
+            continue;
+        }
         walk.timer.tick(time.delta_seconds);
         if walk.timer.finished {
             if walk.jump_possibility > rng.gen_range(0.0..1.0) {
@@ -469,7 +507,7 @@ fn setup_enemies(
     animate_map.insert(State::Run, (1..5).collect());
     animate_map.insert(State::Jump, vec![1, 3]);
 
-    for (i, e) in enemies.enemies.into_iter().take(3).enumerate() {
+    for (i, e) in enemies.enemies.into_iter().enumerate() {
         let base_transform =
             Transform::from_translation(Vec3::new(180.0 * i as f32 + 500.0, -500.0, 0.0));
 
@@ -508,26 +546,18 @@ fn setup_enemies(
 fn load_terrain_system(
     time: Res<Time>,
     commands: &mut Commands,
+    camera_state: Res<CameraState>,
     mut tileinfo: ResMut<TileInfo>,
-    camera: Query<(&Camera, &OrthographicProjection, &Transform)>,
-    attacks: Query<(Entity, &Attack, &Transform)>,
 ) {
-    let (_, proj, center) = camera.iter().next().unwrap();
-
     tileinfo.timer.tick(time.delta_seconds);
     if !tileinfo.timer.finished {
         return;
     }
 
-    if center.translation == tileinfo.center {
+    if camera_state.transform.translation == tileinfo.center {
         return;
     }
-    tileinfo.center = center.translation;
-
-    let min_x = center.translation.x + proj.left * center.scale.x * 1.5;
-    let min_y = center.translation.y + proj.bottom * center.scale.y * 1.5;
-    let max_x = center.translation.x + proj.right * center.scale.x * 1.5;
-    let max_y = center.translation.y + proj.top * center.scale.y * 1.5;
+    tileinfo.center = camera_state.transform.translation;
 
     let handle = tileinfo.atlas_handle.clone();
 
@@ -539,7 +569,7 @@ fn load_terrain_system(
         let x = *x as f32 * 16.0;
         let y = *y as f32 * -16.0;
 
-        if x >= min_x && x < max_x && y >= min_y && y < max_y {
+        if camera_state.in_scope(&Vec3::new(x, y, 0.0)) {
             if loaded.is_none() {
                 loaded_count += 1;
 
@@ -572,6 +602,14 @@ fn load_terrain_system(
         "Loaded: {}, Unloaded: {} (Current: {})",
         loaded_count, unloaded_count, total
     );
+}
+
+fn cleanup_attack_system(
+    commands: &mut Commands,
+    camera_state: Res<CameraState>,
+    attacks: Query<(Entity, &Attack, &Transform)>,
+) {
+    let (min_x, min_y, max_x, max_y) = camera_state.scope();
 
     for (e, _, transform) in attacks.iter() {
         let x = transform.translation.x;
@@ -677,12 +715,16 @@ fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Char>) {
 
 fn camera_system(
     query: Query<(&Player, &Transform)>,
-    mut camera: Query<(&mut Camera, &mut Transform)>,
+    mut camera_state: ResMut<CameraState>,
+    mut camera: Query<(&mut Camera, &OrthographicProjection, &mut Transform)>,
 ) {
     for (_, player_transform) in query.iter() {
-        for (_, mut camera_transform) in camera.iter_mut() {
+        for (_, projection, mut camera_transform) in camera.iter_mut() {
             camera_transform.translation = player_transform.translation.clone();
             camera_transform.scale = Vec3::splat(0.3);
+
+            camera_state.transform = camera_transform.clone();
+            camera_state.projection = projection.clone();
         }
     }
 }
@@ -698,10 +740,17 @@ fn to_rect(translation: &Vec3, size: &Vec2) -> Rect<f32> {
 
 fn physics_system(
     time: Res<Time>,
+    camera_state: Res<CameraState>,
     mut query: Query<(&mut Char, &mut Transform)>,
     mut terrains: Query<(&Terrain, &Transform)>,
 ) {
     for (mut ch, mut cht) in query.iter_mut() {
+        if !camera_state.in_scope(&cht.translation) {
+            ch.velocity.x = 0.0;
+            ch.velocity.y = 0.0;
+            continue;
+        }
+
         let old_ch = to_rect(&cht.translation, &ch.size);
 
         let new_ch_pos = cht.translation + time.delta_seconds * ch.velocity;
@@ -714,6 +763,10 @@ fn physics_system(
         ch.on_ground = false;
 
         for (t, tt) in terrains.iter_mut() {
+            if !camera_state.in_scope(&tt.translation) {
+                continue;
+            }
+
             if !t.collision {
                 continue;
             }
