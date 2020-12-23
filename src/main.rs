@@ -519,7 +519,7 @@ fn setup_enemies(
                 ..Default::default()
             })
             .with(Timer::from_seconds(0.2, true))
-            .with(Enemy { life: e.lgtm })
+            .with(Enemy { life: e.lgtm + 1 })
             .with(Char {
                 dir: Dir::Right,
                 init_dir: Dir::Left,
