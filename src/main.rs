@@ -52,6 +52,7 @@ struct GameMode {
 
 struct Player {
     keybinds: KeyBinds,
+    life: u32,
 }
 
 #[derive(Debug)]
@@ -104,6 +105,22 @@ impl Char {
             transform.rotation = Quat::default();
         }
     }
+}
+
+#[derive(Debug)]
+enum Owner {
+    Player,
+    Enemy,
+}
+
+#[derive(Debug)]
+struct Enemy {
+    life: u32,
+}
+
+#[derive(Debug)]
+struct Attack {
+    owner: Owner,
 }
 
 #[derive(Debug, new)]
@@ -235,6 +252,7 @@ fn setup_player(
                 left: KeyCode::A,
                 right: KeyCode::D,
             },
+            life: 10,
         })
         .with(CharMotion::default())
         .with(Timer::from_seconds(0.2, true))
@@ -283,6 +301,7 @@ fn setup_enemies(
                 ..Default::default()
             })
             .with(Timer::from_seconds(0.2, true))
+            .with(Enemy { life: 10 })
             .with(Char {
                 dir: Dir::Right,
                 init_dir: Dir::Left,
