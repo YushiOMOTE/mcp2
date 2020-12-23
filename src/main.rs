@@ -33,10 +33,14 @@ fn main() {
         .add_system_to_stage("before", load_terrain_system)
         .add_system_to_stage("before", move_char_system)
         .add_system_to_stage("before", random_walk_system)
+        .add_system_to_stage("before", random_attack_system)
         .add_system_to_stage("before", animate_system)
         .add_system_to_stage("before", gravity_system)
+        .add_system_to_stage("before", attack_move_system)
         .add_system_to_stage("after", physics_system)
+        .add_system_to_stage("after", attack_collision_system)
         .add_system(camera_system)
+        .add_system(shoot_system)
         .run();
 }
 
@@ -53,6 +57,8 @@ struct GameMode {
 struct Player {
     keybinds: KeyBinds,
     life: u32,
+    attack_atlas_handle: Handle<TextureAtlas>,
+    attack_timer: Timer,
 }
 
 #[derive(Debug)]
@@ -61,6 +67,7 @@ struct KeyBinds {
     down: KeyCode,
     left: KeyCode,
     right: KeyCode,
+    attack: KeyCode,
 }
 
 #[derive(Debug, Default)]
@@ -69,6 +76,7 @@ struct CharMotion {
     down: bool,
     left: bool,
     right: bool,
+    attack: bool,
 }
 
 #[derive(Debug)]
@@ -108,20 +116,20 @@ impl Char {
 }
 
 #[derive(Debug)]
-enum Owner {
-    Player,
-    Enemy,
-}
-
-#[derive(Debug)]
 struct Enemy {
     life: u32,
 }
 
 #[derive(Debug)]
 struct Attack {
-    owner: Owner,
+    velocity: Vec2,
 }
+
+#[derive(Debug)]
+struct EnemyAttack;
+
+#[derive(Debug)]
+struct PlayerAttack;
 
 #[derive(Debug, new)]
 struct Animate {
@@ -136,6 +144,139 @@ impl Animate {
         let index = animation[self.index % animation.len()];
         self.index = (self.index + 1) % animation.len();
         index
+    }
+}
+
+fn shoot_system(
+    commands: &mut Commands,
+    time: Res<Time>,
+    mut query: Query<(&mut Player, &Char, &CharMotion, &Transform)>,
+) {
+    for (mut player, ch, state, transform) in query.iter_mut() {
+        player.attack_timer.tick(time.delta_seconds);
+        if player.attack_timer.finished && state.attack {
+            player.attack_timer.reset();
+
+            let x = if ch.dir == Dir::Right { 500.0 } else { -500.0 };
+
+            commands
+                .spawn(SpriteSheetBundle {
+                    sprite: TextureAtlasSprite::new(0),
+                    texture_atlas: player.attack_atlas_handle.clone(),
+                    transform: transform.clone(),
+                    ..Default::default()
+                })
+                .with(Attack {
+                    velocity: Vec2::new(x, 0.0),
+                })
+                .with(PlayerAttack);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RandomAttack {
+    attack_index: u32,
+    timer: Timer,
+    atlas_handle: Handle<TextureAtlas>,
+}
+
+fn random_attack_system(
+    commands: &mut Commands,
+    time: Res<Time>,
+    mut query: Query<(&mut RandomAttack, &Transform)>,
+) {
+    use rand::Rng;
+
+    let mut rng = rand::thread_rng();
+
+    for (mut attack, transform) in query.iter_mut() {
+        attack.timer.tick(time.delta_seconds);
+        if attack.timer.finished {
+            if rng.gen_range(0.0..1.0) > 0.6 {
+                for i in 0..8 {
+                    let pi = 2.0 * std::f32::consts::PI / 8.0 * i as f32;
+                    let speed = 100.0;
+
+                    commands
+                        .spawn(SpriteSheetBundle {
+                            sprite: TextureAtlasSprite::new(attack.attack_index),
+                            texture_atlas: attack.atlas_handle.clone(),
+                            transform: transform.clone(),
+                            ..Default::default()
+                        })
+                        .with(Attack {
+                            velocity: Vec2::new(speed * pi.sin(), speed * pi.cos()),
+                        })
+                        .with(EnemyAttack);
+                }
+            }
+        }
+    }
+}
+
+fn attack_move_system(time: Res<Time>, mut query: Query<(&Attack, &mut Transform)>) {
+    for (attack, mut transform) in query.iter_mut() {
+        transform.translation.x += time.delta_seconds * attack.velocity.x;
+        transform.translation.y += time.delta_seconds * attack.velocity.y;
+    }
+}
+
+fn attack_collision_system(
+    commands: &mut Commands,
+    mut players: Query<(&mut Player, &Char, &Transform)>,
+    mut enemies: Query<(Entity, &mut Enemy, &Char, &Transform)>,
+    enemy_attacks: Query<(Entity, &EnemyAttack, &Transform)>,
+    player_attacks: Query<(Entity, &PlayerAttack, &Transform)>,
+) {
+    for (mut player, ch, transform) in players.iter_mut() {
+        for (e, _, attack_transform) in enemy_attacks.iter() {
+            let min_x = transform.translation.x;
+            let min_y = transform.translation.y;
+            let max_x = transform.translation.x + ch.size.x;
+            let max_y = transform.translation.y + ch.size.y;
+
+            let amin_x = attack_transform.translation.x;
+            let amin_y = attack_transform.translation.y;
+            let amax_x = amin_x + 16.0;
+            let amax_y = amin_y + 16.0;
+
+            if max_x < amin_x || amax_x < min_x || max_y < amin_y || amax_y < min_y {
+                continue;
+            }
+
+            player.life -= 1;
+            if player.life == 0 {
+                panic!("gameover!");
+            }
+
+            commands.despawn(e);
+        }
+    }
+
+    for (ee, mut enemy, ch, transform) in enemies.iter_mut() {
+        for (e, _, attack_transform) in player_attacks.iter() {
+            let min_x = transform.translation.x;
+            let min_y = transform.translation.y;
+            let max_x = transform.translation.x + ch.size.x;
+            let max_y = transform.translation.y + ch.size.y;
+
+            let amin_x = attack_transform.translation.x;
+            let amin_y = attack_transform.translation.y;
+            let amax_x = amin_x + 16.0;
+            let amax_y = amin_y + 16.0;
+
+            if max_x < amin_x || amax_x < min_x || max_y < amin_y || amax_y < min_y {
+                continue;
+            }
+
+            enemy.life -= 1;
+            if enemy.life == 0 {
+                commands.despawn(ee);
+            }
+
+            commands.despawn(e);
+        }
     }
 }
 
@@ -188,6 +329,21 @@ struct TileInfo {
     timer: Timer,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct EnemyInfo {
+    user: String,
+    lgtm: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct EnemyList {
+    enemies: Vec<EnemyInfo>,
+}
+
+fn load_enemy_list() -> EnemyList {
+    serde_json::from_slice(include_bytes!("enemies.json")).unwrap()
+}
+
 fn load_tilemap() -> TileMap {
     serde_json::from_slice(include_bytes!("tiles.json")).unwrap()
 }
@@ -232,6 +388,16 @@ fn setup_player(
     .scale(Vec2::splat(1.0 / 2.0))
     .build(&mut atlases);
 
+    let attack_atlas_handle = AtlasBuilder::load(
+        &asset_server,
+        Vec2::new(32.0, 32.0),
+        Vec2::new(32.0, 32.0),
+        "textures/attack.png",
+    )
+    .padding(Vec2::new(0.0, 0.0))
+    .scale(Vec2::splat(0.5))
+    .build(&mut atlases);
+
     let mut animate_map = HashMap::new();
     animate_map.insert(State::Stop, vec![0]);
     animate_map.insert(State::Run, (1..5).collect());
@@ -251,8 +417,11 @@ fn setup_player(
                 down: KeyCode::S,
                 left: KeyCode::A,
                 right: KeyCode::D,
+                attack: KeyCode::Space,
             },
             life: 10,
+            attack_atlas_handle,
+            attack_timer: Timer::from_seconds(0.2, false),
         })
         .with(CharMotion::default())
         .with(Timer::from_seconds(0.2, true))
@@ -283,31 +452,42 @@ fn setup_enemies(
     .scale(Vec2::splat(1.0))
     .build(&mut atlases);
 
+    let enemies = load_enemy_list();
+
+    let attack_atlas_handle = AtlasBuilder::load(
+        &asset_server,
+        Vec2::new(32.0, 32.0),
+        Vec2::new(32.0 * enemies.enemies.len() as f32, 32.0),
+        "textures/enemies_sheet.png",
+    )
+    .padding(Vec2::new(0.0, 0.0))
+    .scale(Vec2::splat(0.4))
+    .build(&mut atlases);
+
     let mut animate_map = HashMap::new();
     animate_map.insert(State::Stop, vec![0]);
     animate_map.insert(State::Run, (1..5).collect());
     animate_map.insert(State::Jump, vec![1, 3]);
 
-    for i in 0..10 {
+    for (i, e) in enemies.enemies.into_iter().take(3).enumerate() {
+        let base_transform =
+            Transform::from_translation(Vec3::new(180.0 * i as f32 + 500.0, -500.0, 0.0));
+
         commands
             .spawn(SpriteSheetBundle {
                 sprite: TextureAtlasSprite::new(15),
                 texture_atlas: atlas_handle.clone(),
-                transform: Transform::from_translation(Vec3::new(
-                    180.0 * i as f32 + 500.0,
-                    -500.0,
-                    0.0,
-                )),
+                transform: base_transform,
                 ..Default::default()
             })
             .with(Timer::from_seconds(0.2, true))
-            .with(Enemy { life: 10 })
+            .with(Enemy { life: e.lgtm })
             .with(Char {
                 dir: Dir::Right,
                 init_dir: Dir::Left,
                 state: State::Stop,
                 velocity: Vec3::zero(),
-                size: Vec2::new(16.0, 16.0),
+                size: Vec2::new(32.0, 32.0),
                 on_ground: false,
             })
             .with(Animate::new(animate_map.clone()))
@@ -315,6 +495,11 @@ fn setup_enemies(
                 timer: Timer::from_seconds(1.0, true),
                 move_possibility: 0.3,
                 jump_possibility: 0.3,
+            })
+            .with(RandomAttack {
+                timer: Timer::from_seconds(1.0, true),
+                attack_index: i as u32,
+                atlas_handle: attack_atlas_handle.clone(),
             })
             .with(Gravity);
     }
@@ -325,6 +510,7 @@ fn load_terrain_system(
     commands: &mut Commands,
     mut tileinfo: ResMut<TileInfo>,
     camera: Query<(&Camera, &OrthographicProjection, &Transform)>,
+    attacks: Query<(Entity, &Attack, &Transform)>,
 ) {
     let (_, proj, center) = camera.iter().next().unwrap();
 
@@ -386,6 +572,15 @@ fn load_terrain_system(
         "Loaded: {}, Unloaded: {} (Current: {})",
         loaded_count, unloaded_count, total
     );
+
+    for (e, _, transform) in attacks.iter() {
+        let x = transform.translation.x;
+        let y = transform.translation.y;
+        if x >= min_x && x < max_x && y >= min_y && y < max_y {
+            continue;
+        }
+        commands.despawn(e);
+    }
 }
 
 fn track_inputs_system(
@@ -407,6 +602,9 @@ fn track_inputs_system(
                 }
                 Some(k) if k == player.keybinds.right => {
                     state.right = e.state.is_pressed();
+                }
+                Some(k) if k == player.keybinds.attack => {
+                    state.attack = e.state.is_pressed();
                 }
                 // TODO: Temporarily disbale because this is confusing
                 // Some(k) if k == KeyCode::E => {
