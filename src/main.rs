@@ -457,7 +457,7 @@ fn setup_player(
                 right: KeyCode::D,
                 attack: KeyCode::Space,
             },
-            life: 10,
+            life: 30,
             attack_atlas_handle,
             attack_timer: Timer::from_seconds(0.2, false),
         })
@@ -508,8 +508,14 @@ fn setup_enemies(
     animate_map.insert(State::Jump, vec![1, 3]);
 
     for (i, e) in enemies.enemies.into_iter().enumerate() {
-        let base_transform =
-            Transform::from_translation(Vec3::new(180.0 * i as f32 + 500.0, -500.0, 0.0));
+        let px = i % 20;
+        let py = i / 20;
+
+        let base_transform = Transform::from_translation(Vec3::new(
+            70.0 * px as f32 + 500.0,
+            -500.0 - 200.0 * py as f32,
+            0.0,
+        ));
 
         commands
             .spawn(SpriteSheetBundle {
