@@ -257,19 +257,18 @@ fn setup_enemies(
 ) {
     let atlas_handle = AtlasBuilder::load(
         &asset_server,
-        Vec2::new(1600.0 / 32.0, 50.0),
-        Vec2::new(1600.0, 50.0),
+        Vec2::new(32.0, 32.0),
+        Vec2::new(160.0, 32.0),
         "textures/enemy.png",
     )
     .padding(Vec2::new(0.0, 0.0))
-    .scale(Vec2::splat(1.0 / 1.7))
-    .offset(Vec2::new(0.0, -5.0))
+    .scale(Vec2::splat(1.0))
     .build(&mut atlases);
 
     let mut animate_map = HashMap::new();
-    animate_map.insert(State::Stop, (8..24).collect());
-    animate_map.insert(State::Run, (25..29).collect());
-    animate_map.insert(State::Jump, vec![26]);
+    animate_map.insert(State::Stop, vec![0]);
+    animate_map.insert(State::Run, (1..5).collect());
+    animate_map.insert(State::Jump, vec![1, 3]);
 
     for i in 0..10 {
         commands
