@@ -18,7 +18,7 @@ fn main() {
             ..Default::default()
         })
         .add_resource(AssetServerSettings {
-            asset_folder: option_env!("MCP2_PREFIX").unwrap_or("/").to_string(),
+            asset_folder: option_env!("MCP2_PREFIX").unwrap_or("").to_string(),
         })
         .add_plugins(bevy_webgl2::DefaultPlugins)
         .add_startup_system(setup_enemies)
