@@ -14,4 +14,4 @@ derive-new = "0.5"
 rand = "0.8"
 
 [workspace]
-members = ["tiles"]
+members = ["tiles", "fetch"]

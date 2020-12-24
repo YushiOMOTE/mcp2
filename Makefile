@@ -3,7 +3,7 @@ web_dir ?= static/
 wasm_dir ?= static/target
 
 
-.PHONY: setup build run tiles
+.PHONY: setup build run tiles fetch
 
 
 setup:
@@ -19,6 +19,10 @@ build: tiles
 
 tiles:
 	cd tiles && cargo run -p tiles -- test-tiled.tmx . ../src/tiles.json
+
+
+fetch:
+	cd fetch && cargo run -p fetch
 
 
 run: build

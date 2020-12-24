@@ -1,0 +1,20 @@
+[package]
+authors = ["Yushi OMOTE <yushiomote@gmail.com>"]
+edition = "2018"
+name = "fetch"
+version = "0.1.0"
+
+[dependencies]
+image = "0.23"
+reqwest = "0.10.10"
+scraper = "0.12.0"
+serde_json = "1.0"
+structopt = "*"
+
+[dependencies.serde]
+features = ["derive"]
+version = "1.0"
+
+[dependencies.tokio]
+features = ["full"]
+version = "0.2"
