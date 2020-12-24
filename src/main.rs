@@ -508,12 +508,12 @@ fn setup_enemies(
     animate_map.insert(State::Jump, vec![1, 3]);
 
     for (i, e) in enemies.enemies.into_iter().enumerate() {
-        let px = i % 20;
-        let py = i / 20;
+        let px = i % 16;
+        let py = i / 16;
 
         let base_transform = Transform::from_translation(Vec3::new(
-            70.0 * px as f32 + 500.0,
-            -500.0 - 200.0 * py as f32,
+            250.0 * px as f32 + 100.0,
+            -100.0 - 180.0 * py as f32,
             0.0,
         ));
 
