@@ -25,7 +25,7 @@ fn main() {
         .add_startup_system(setup_player)
         .add_startup_system(setup_terrain)
         .init_resource::<TrackInputState>()
-        .init_resource::<GameMode>()
+        .init_resource::<GameState>()
         .init_resource::<TileInfo>()
         .init_resource::<CameraState>()
         .add_stage_after(stage::UPDATE, "before")
@@ -42,6 +42,7 @@ fn main() {
         .add_system_to_stage("after", attack_collision_system)
         .add_system(track_inputs_system)
         .add_system(cleanup_attack_system)
+        .add_system(show_life_system)
         .add_system(shoot_system)
         .run();
 }
@@ -79,8 +80,8 @@ struct TrackInputState {
 }
 
 #[derive(Debug, Default)]
-struct GameMode {
-    debug_mode: bool,
+struct GameState {
+    gameover: bool,
 }
 
 struct Player {
@@ -253,13 +254,16 @@ fn attack_move_system(time: Res<Time>, mut query: Query<(&Attack, &mut Transform
 
 fn attack_collision_system(
     commands: &mut Commands,
+    mut game_state: ResMut<GameState>,
     camera_state: Res<CameraState>,
-    mut players: Query<(&mut Player, &Char, &Transform)>,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut players: Query<(Entity, &mut Player, &Char, &Transform)>,
     mut enemies: Query<(Entity, &mut Enemy, &Char, &Transform)>,
     enemy_attacks: Query<(Entity, &EnemyAttack, &Transform)>,
     player_attacks: Query<(Entity, &PlayerAttack, &Transform)>,
 ) {
-    for (mut player, ch, transform) in players.iter_mut() {
+    for (pe, mut player, ch, transform) in players.iter_mut() {
         for (e, _, attack_transform) in enemy_attacks.iter() {
             let min_x = transform.translation.x;
             let min_y = transform.translation.y;
@@ -277,7 +281,15 @@ fn attack_collision_system(
 
             player.life -= 1;
             if player.life == 0 {
-                panic!("gameover!");
+                game_state.gameover = true;
+                let texture_handle = asset_server.load("textures/gameover.png");
+
+                commands.spawn(SpriteBundle {
+                    material: materials.add(texture_handle.into()),
+                    transform: Transform::from_translation(transform.translation.clone()),
+                    ..Default::default()
+                });
+                commands.despawn(pe);
             }
 
             commands.despawn(e);
@@ -346,6 +358,11 @@ fn random_walk_system(
             }
         }
     }
+}
+
+#[derive(Debug)]
+struct Life {
+    index: u32,
 }
 
 #[derive(Debug, new)]
@@ -455,7 +472,7 @@ fn setup_player(
                 down: KeyCode::S,
                 left: KeyCode::A,
                 right: KeyCode::D,
-                attack: KeyCode::Space,
+                attack: KeyCode::J,
             },
             life: 30,
             attack_atlas_handle,
@@ -473,6 +490,46 @@ fn setup_player(
         })
         .with(Gravity)
         .with(Animate::new(animate_map));
+
+    let life_atlas_handle = AtlasBuilder::load(
+        &asset_server,
+        Vec2::new(32.0, 32.0),
+        Vec2::new(64.0, 32.0),
+        "textures/life.png",
+    )
+    .padding(Vec2::new(0.0, 0.0))
+    .scale(Vec2::splat(1.0 / 4.0))
+    .build(&mut atlases);
+
+    for i in 0..30 {
+        commands
+            .spawn(SpriteSheetBundle {
+                sprite: TextureAtlasSprite::new(1),
+                texture_atlas: life_atlas_handle.clone(),
+                ..Default::default()
+            })
+            .with(Life { index: i });
+    }
+}
+
+fn show_life_system(
+    camera_state: Res<CameraState>,
+    player: Query<&Player>,
+    mut query: Query<(&Life, &mut TextureAtlasSprite, &mut Transform)>,
+) {
+    for player in player.iter() {
+        for (life, mut sprite, mut transform) in query.iter_mut() {
+            sprite.index = if life.index + 1 <= player.life { 1 } else { 0 };
+            transform.translation = camera_state.transform.translation;
+            transform.translation.x += camera_state.projection.left
+                * camera_state.transform.scale.x
+                + 32.0
+                + life.index as f32 * 8.0;
+            transform.translation.y +=
+                camera_state.projection.top * camera_state.transform.scale.y - 64.0;
+            transform.translation.z = 100.0;
+        }
+    }
 }
 
 fn setup_enemies(
@@ -513,7 +570,7 @@ fn setup_enemies(
 
         let base_transform = Transform::from_translation(Vec3::new(
             250.0 * px as f32 + 100.0,
-            -100.0 - 180.0 * py as f32,
+            -500.0 - 180.0 * py as f32,
             0.0,
         ));
 
@@ -650,17 +707,6 @@ fn track_inputs_system(
                 Some(k) if k == player.keybinds.attack => {
                     state.attack = e.state.is_pressed();
                 }
-                // TODO: Temporarily disbale because this is confusing
-                // Some(k) if k == KeyCode::E => {
-                //     if !game_mode.debug_mode && e.state.is_pressed() {
-                //         game_mode.debug_mode = true;
-                //     }
-                // }
-                // Some(k) if k == KeyCode::P => {
-                //     if game_mode.debug_mode && e.state.is_pressed() {
-                //         game_mode.debug_mode = false;
-                //     }
-                // }
                 _ => {}
             }
 
@@ -685,17 +731,9 @@ fn animate_system(
     }
 }
 
-fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Char, &Player, &CharMotion)>) {
+fn move_char_system(mut query: Query<(&mut Char, &Player, &CharMotion)>) {
     for (mut ch, _, state) in query.iter_mut() {
-        if game_mode.debug_mode {
-            if state.up {
-                ch.velocity.y = 300.0;
-            } else if state.down {
-                ch.velocity.y = -300.0;
-            } else {
-                ch.velocity.y = 0.0;
-            }
-        } else if state.up && ch.on_ground {
+        if state.up && ch.on_ground {
             ch.velocity.y = 300.0;
             ch.on_ground = false;
         }
@@ -710,10 +748,7 @@ fn move_char_system(game_mode: Res<GameMode>, mut query: Query<(&mut Char, &Play
     }
 }
 
-fn gravity_system(game_mode: Res<GameMode>, mut query: Query<&mut Char>) {
-    if game_mode.debug_mode {
-        return;
-    }
+fn gravity_system(mut query: Query<&mut Char>) {
     for mut ch in query.iter_mut() {
         ch.velocity.y -= 9.8;
     }
