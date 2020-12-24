@@ -34,5 +34,6 @@ http://chintama.club/mcp2/
 
 * To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
 * `W`, `A`, `S`, `D` keys to move the character. (You may first need to click the canvas to focus)
-* `E` to switch to `debug mode`.
-* `P` to switch to `play mode`.
+* `J` to attack.
+
+
