@@ -1,6 +1,23 @@
-# Mimimum Crappy Playable 2
+# Yubaba 2D platformer
 
-A minimum working example of bevy wasm 2d platformer.
+A 2D wasm platformer.
+
+You control Chihiro and beat Yubaba.
+
+The status of Yubaba is based on [the ranking](https://qiita.com/torifukukaiou/items/c8361231cdc56e493245).
+
+For example,
+
+* One article in the list corresponds to one Yubaba.
+* The life of Yubaba is the number of LGTM + 1.
+* The attack of Yubaba is the icon of the article authors.
+
+## Demo
+
+https://yushiomote.github.io/mcp2/
+
+* `W`, `A`, `S`, `D` keys to move the character. (You may first need to click the canvas to focus)
+* `J` to attack.
 
 ## Setup
 
@@ -26,14 +43,6 @@ Run a http server that shows the game. Check it on your browser.
 make run
 ```
 
-## Demo
-
-http://chintama.club/mcp2/
-
 ## Note
 
 * To change site prefix set the environment variable `MCP2_PREFIX=<prefix>`.
-* `W`, `A`, `S`, `D` keys to move the character. (You may first need to click the canvas to focus)
-* `J` to attack.
-
-
