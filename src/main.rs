@@ -517,18 +517,24 @@ fn show_life_system(
     player: Query<&Player>,
     mut query: Query<(&Life, &mut TextureAtlasSprite, &mut Transform)>,
 ) {
-    for player in player.iter() {
-        for (life, mut sprite, mut transform) in query.iter_mut() {
-            sprite.index = if life.index + 1 <= player.life { 1 } else { 0 };
-            transform.translation = camera_state.transform.translation;
-            transform.translation.x += camera_state.projection.left
-                * camera_state.transform.scale.x
-                + 32.0
-                + life.index as f32 * 8.0;
-            transform.translation.y +=
-                camera_state.projection.top * camera_state.transform.scale.y - 64.0;
-            transform.translation.z = 100.0;
-        }
+    let mut player_opt = None;
+    for p in player.iter() {
+        player_opt = Some(p);
+    }
+
+    for (life, mut sprite, mut transform) in query.iter_mut() {
+        sprite.index = if player_opt.map(|p| life.index < p.life).unwrap_or(false) {
+            1
+        } else {
+            0
+        };
+        transform.translation = camera_state.transform.translation;
+        transform.translation.x += camera_state.projection.left * camera_state.transform.scale.x
+            + 32.0
+            + life.index as f32 * 8.0;
+        transform.translation.y +=
+            camera_state.projection.top * camera_state.transform.scale.y - 64.0;
+        transform.translation.z = 100.0;
     }
 }
 
