@@ -1,0 +1,3 @@
+---
+- name: ayhntksm_tama
+  image_only: true

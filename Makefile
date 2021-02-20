@@ -22,7 +22,7 @@ tiles:
 
 
 fetch:
-	cd fetch && cargo run -p fetch
+	cd fetch && cargo run -p fetch -- -i ignore.yml ../static/textures/enemies_sheet.png ../src/enemies.json
 
 
 run: build
