@@ -18,7 +18,7 @@ build: tiles
 
 
 tiles:
-	cd tiles && cargo run -p tiles -- test-tiled.tmx . ../src/tiles.json
+	cd tiles && cargo run -p tiles -- tilemap.tmx . ../src/tiles.json
 
 
 fetch:
